@@ -1,0 +1,6 @@
+{
+  "name": "livedown",
+  "main": "party/livedown.ts",
+  "compatibilityDate": "2024-01-01",
+  "serve": "public"
+}

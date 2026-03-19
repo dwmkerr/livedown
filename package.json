@@ -1,0 +1,12 @@
+{
+  "name": "@dwmkerr/livedown",
+  "version": "0.1.0",
+  "description": "Edit markdown locally, share it live.",
+  "scripts": {
+    "start": "node watcher.js",
+    "deploy": "partykit deploy"
+  },
+  "keywords": ["markdown", "live", "collaboration", "partykit"],
+  "author": "Dave Kerr",
+  "license": "MIT"
+}

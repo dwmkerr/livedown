@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>livedown</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <link  rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.17/codemirror.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.17/codemirror.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.17/mode/markdown/markdown.min.js"></script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; overflow: hidden;
+                 font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+
+    /* ── Status bar ─────────────────────────────────────────── */
+    #statusbar {
+      height: 32px; background: #1e1e2e; color: #cdd6f4;
+      display: flex; align-items: center;
+      font-size: 12px; border-bottom: 1px solid #313244;
+      overflow: hidden; white-space: nowrap; flex-shrink: 0;
+    }
+    .sb-seg {
+      display: flex; align-items: center; gap: 5px;
+      padding: 0 12px; height: 100%;
+      border-right: 1px solid #313244; flex-shrink: 0;
+    }
+    #sb-file   { color: #89b4fa; font-weight: 600; }
+    #sb-owner  { color: #a6e3a1; }
+    #sb-repo   { color: #89b4fa; text-decoration: none; }
+    #sb-repo:hover { text-decoration: underline; }
+    #sb-lastedit { color: #cba6f7; }
+
+    /* Connection dot */
+    #sb-status { border-right: none; border-left: 1px solid #313244; }
+    #sb-dot { width: 7px; height: 7px; border-radius: 50%; background: #6c7086; transition: background .4s; }
+    #sb-dot.live    { background: #a6e3a1; }
+    #sb-dot.offline { background: #f38ba8; }
+    #sb-label { color: #6c7086; }
+
+    /* Profile badge — top right */
+    #profile {
+      display: flex; align-items: center; gap: 6px;
+      padding: 0 12px; height: 100%;
+      border-left: 1px solid #313244; flex-shrink: 0;
+      font-size: 11px; color: #cdd6f4;
+    }
+    #profile-avatar {
+      width: 20px; height: 20px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 10px; font-weight: 700; color: #1e1e2e;
+      flex-shrink: 0;
+    }
+    #profile-name { font-weight: 500; }
+
+    /* ── Split panes ────────────────────────────────────────── */
+    #panes { display: flex; height: calc(100vh - 32px); }
+
+    #pane-source  { flex: 1; overflow: hidden; background: #1e1e2e; position: relative; }
+    #pane-preview { flex: 1; overflow-y: auto; }
+
+    #divider {
+      width: 4px; background: #313244; cursor: col-resize; flex-shrink: 0;
+    }
+    #divider:hover, #divider.dragging { background: #89b4fa; }
+
+    /* CodeMirror */
+    #pane-source .CodeMirror {
+      height: 100%; font-size: 13px;
+      font-family: 'JetBrains Mono', 'Fira Code', 'SFMono-Regular', Consolas, monospace;
+      background: #1e1e2e; color: #cdd6f4; line-height: 1.6;
+    }
+    .CodeMirror-scroll  { padding: 8px 0; }
+    .CodeMirror-lines   { padding: 0 14px; }
+    .CodeMirror-cursor  { border-left: 2px solid #89b4fa; }
+    .CodeMirror-selected { background: #313244 !important; }
+    .CodeMirror-activeline-background { background: #28283d !important; }
+
+    /* Markdown syntax colours (minimal) */
+    .cm-header   { color: #89b4fa !important; font-weight: bold; }
+    .cm-strong   { color: #f38ba8 !important; }
+    .cm-em       { color: #fab387 !important; }
+    .cm-link     { color: #a6e3a1 !important; }
+    .cm-url      { color: #94e2d5 !important; }
+    .cm-comment  { color: #6c7086 !important; }
+    .cm-code     { color: #f9e2af !important; }
+
+    /* "Someone is typing" flash on source pane border */
+    #pane-source.remote-edit { border-right: 2px solid #cba6f7; }
+
+    /* ── Rendered markdown ──────────────────────────────────── */
+    #preview-inner {
+      max-width: 720px; margin: 0 auto;
+      padding: 2rem 2.5rem 4rem; color: #24292e;
+    }
+    #preview-inner h1 { font-size: 1.9em; border-bottom: 1px solid #e1e4e8; padding-bottom: .3em; margin: 0 0 1em; }
+    #preview-inner h2 { font-size: 1.4em; border-bottom: 1px solid #e1e4e8; padding-bottom: .2em; margin: 1.5em 0 .8em; }
+    #preview-inner h3 { font-size: 1.15em; margin: 1.2em 0 .6em; }
+    #preview-inner p  { line-height: 1.7; margin: 0 0 1em; }
+    #preview-inner ul, #preview-inner ol { padding-left: 2em; margin: 0 0 1em; }
+    #preview-inner li { line-height: 1.7; margin: .2em 0; }
+    #preview-inner pre { background: #f6f8fa; border: 1px solid #e1e4e8; border-radius: 6px;
+                         padding: 1rem; overflow-x: auto; margin: 0 0 1em; }
+    #preview-inner code { font-family: 'SFMono-Regular', Consolas, monospace; font-size: .88em; }
+    #preview-inner pre code { background: none; padding: 0; border: none; }
+    #preview-inner :not(pre) > code { background: #f6f8fa; padding: .2em .4em;
+                                       border-radius: 3px; border: 1px solid #e1e4e8; }
+    #preview-inner table { border-collapse: collapse; width: 100%; margin: 0 0 1em; }
+    #preview-inner th, #preview-inner td { border: 1px solid #e1e4e8; padding: .5em .75em; text-align: left; }
+    #preview-inner th { background: #f6f8fa; font-weight: 600; }
+    #preview-inner tr:nth-child(even) td { background: #f6f8fa; }
+    #preview-inner blockquote { border-left: 4px solid #e1e4e8; padding: 0 1em;
+                                 color: #6a737d; margin: 0 0 1em; }
+    #preview-inner a { color: #0366d6; }
+    #preview-inner hr { border: none; border-top: 1px solid #e1e4e8; margin: 1.5em 0; }
+  </style>
+</head>
+<body>
+
+<div id="statusbar">
+  <div class="sb-seg">
+    <span style="opacity:.5">📄</span>
+    <span id="sb-file">—</span>
+  </div>
+  <div class="sb-seg" id="sb-owner-seg" style="display:none">
+    <span style="opacity:.5">👤</span>
+    <span id="sb-owner"></span>
+  </div>
+  <div class="sb-seg" id="sb-repo-seg" style="display:none">
+    <span style="opacity:.5">⎇</span>
+    <a id="sb-repo" href="#" target="_blank"></a>
+  </div>
+  <div class="sb-seg" id="sb-lastedit-seg" style="display:none">
+    <span style="opacity:.5">✏️</span>
+    <span id="sb-lastedit"></span>
+  </div>
+  <!-- spacer pushes right-side items to the edge -->
+  <div style="flex:1"></div>
+  <div id="profile">
+    <div id="profile-avatar">?</div>
+    <span id="profile-name">connecting…</span>
+  </div>
+  <div class="sb-seg" id="sb-status">
+    <div id="sb-dot"></div>
+    <span id="sb-label">connecting…</span>
+  </div>
+</div>
+
+<div id="panes">
+  <div id="pane-source">
+    <textarea id="cm-source"></textarea>
+  </div>
+  <div id="divider"></div>
+  <div id="pane-preview">
+    <div id="preview-inner"></div>
+  </div>
+</div>
+
+<script>
+(function () {
+  const docName  = location.hash.replace(/^#/, '') || 'doc';
+  document.getElementById('sb-file').textContent = docName + '.md';
+  document.title = docName + ' · livedown';
+
+  // Guest colours — cycling palette
+  const PALETTE = ['#89b4fa','#a6e3a1','#f38ba8','#fab387','#f9e2af','#cba6f7','#94e2d5','#eba0ac'];
+  let myGuestId   = null;
+  let myGuestName = null;
+  let myColor     = null;
+
+  function setProfile(guestId) {
+    myGuestId   = guestId;
+    myGuestName = 'Guest ' + guestId;
+    myColor     = PALETTE[(guestId - 1) % PALETTE.length];
+    const av    = document.getElementById('profile-avatar');
+    const nm    = document.getElementById('profile-name');
+    av.textContent  = 'G' + guestId;
+    av.style.background = myColor;
+    nm.textContent  = myGuestName;
+  }
+
+  // ── CodeMirror ───────────────────────────────────────────────
+  const cm = CodeMirror.fromTextArea(document.getElementById('cm-source'), {
+    mode: 'markdown',
+    lineWrapping: true,
+    theme: 'default',
+    lineNumbers: false,
+    autofocus: false,
+    extraKeys: { Tab: false },
+  });
+
+  // Track whether local user is actively editing
+  let lastLocalEdit = 0;
+  let pushTimer     = null;
+
+  cm.on('change', (instance, changeObj) => {
+    if (changeObj.origin === 'setValue') return; // ignore programmatic updates
+    lastLocalEdit = Date.now();
+    // Debounce: push 400ms after last keystroke
+    clearTimeout(pushTimer);
+    pushTimer = setTimeout(() => push(cm.getValue()), 400);
+  });
+
+  // ── Status bar ───────────────────────────────────────────────
+  const dot   = document.getElementById('sb-dot');
+  const label = document.getElementById('sb-label');
+
+  function setStatus(state) {
+    dot.className   = state;
+    label.textContent = state === 'live' ? 'live' : state === 'offline' ? 'offline' : 'connecting…';
+  }
+
+  function setMeta(meta) {
+    if (!meta) return;
+    const owner = meta.owner || '';
+    const repo  = meta.github_repo || '';
+    const title = meta.title || docName;
+
+    document.getElementById('sb-file').textContent = (meta.file || docName) + '.md';
+    document.title = title + ' · livedown';
+
+    const ownerSeg = document.getElementById('sb-owner-seg');
+    document.getElementById('sb-owner').textContent = owner;
+    ownerSeg.style.display = owner ? '' : 'none';
+
+    const repoSeg = document.getElementById('sb-repo-seg');
+    const repoEl  = document.getElementById('sb-repo');
+    repoEl.textContent = repo.replace('https://github.com/', 'github: ');
+    repoEl.href = repo;
+    repoSeg.style.display = repo ? '' : 'none';
+  }
+
+  function setLastEdit(editor, ts) {
+    if (!editor) return;
+    const seg  = document.getElementById('sb-lastedit-seg');
+    const time = ts ? new Date(ts).toLocaleTimeString() : '';
+    document.getElementById('sb-lastedit').textContent = editor + (time ? '  ' + time : '');
+    seg.style.display = '';
+  }
+
+  // ── Render preview ───────────────────────────────────────────
+  function renderPreview(content) {
+    document.getElementById('preview-inner').innerHTML = marked.parse(content || '');
+  }
+
+  // ── Remote update flash ──────────────────────────────────────
+  let flashTimer = null;
+  function flashRemoteEdit() {
+    const src = document.getElementById('pane-source');
+    src.classList.add('remote-edit');
+    clearTimeout(flashTimer);
+    flashTimer = setTimeout(() => src.classList.remove('remote-edit'), 800);
+  }
+
+  // ── WebSocket ────────────────────────────────────────────────
+  const host  = location.host;
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const url   = `${proto}//${host}/parties/main/${encodeURIComponent(docName)}`;
+  let ws, reconnectDelay = 1000;
+
+  function push(content) {
+    if (!ws || ws.readyState !== 1) return;
+    ws.send(JSON.stringify({
+      type: 'push',
+      content,
+      meta: {
+        editor:   myGuestName,
+        editedAt: new Date().toISOString(),
+        file:     docName,
+        color:    myColor,
+      },
+    }));
+    // Update preview locally immediately
+    renderPreview(content);
+  }
+
+  function connect() {
+    ws = new WebSocket(url);
+
+    ws.onopen = () => { setStatus('live'); reconnectDelay = 1000; };
+
+    ws.onmessage = (e) => {
+      const msg = JSON.parse(e.data);
+
+      if (msg.type === 'init') {
+        setProfile(msg.guestId);
+        if (msg.content) {
+          cm.setValue(msg.content);
+          renderPreview(msg.content);
+        }
+        setMeta(msg.meta);
+        setLastEdit(msg.meta?.editor, msg.meta?.editedAt);
+        return;
+      }
+
+      if (msg.type === 'update') {
+        setMeta(msg.meta);
+        setLastEdit(msg.meta?.editor, msg.meta?.editedAt);
+        renderPreview(msg.content || '');
+
+        // Only update the editor if user hasn't typed in the last 1.5s
+        if (Date.now() - lastLocalEdit > 1500) {
+          cm.setValue(msg.content || '');
+        } else {
+          flashRemoteEdit();
+        }
+      }
+    };
+
+    ws.onclose = () => {
+      setStatus('offline');
+      setTimeout(connect, reconnectDelay);
+      reconnectDelay = Math.min(reconnectDelay * 2, 10000);
+    };
+  }
+
+  connect();
+
+  // ── Draggable divider ────────────────────────────────────────
+  const divider     = document.getElementById('divider');
+  const paneSource  = document.getElementById('pane-source');
+  const panePreview = document.getElementById('pane-preview');
+  let dragging = false, startX = 0, startW = 0;
+
+  divider.addEventListener('mousedown', (e) => {
+    dragging = true; startX = e.clientX;
+    startW   = paneSource.offsetWidth;
+    divider.classList.add('dragging');
+    document.body.style.userSelect = 'none';
+  });
+  document.addEventListener('mousemove', (e) => {
+    if (!dragging) return;
+    const total = paneSource.offsetWidth + panePreview.offsetWidth + 4;
+    const newW  = Math.max(200, Math.min(total - 200, startW + (e.clientX - startX)));
+    paneSource.style.flex  = 'none';
+    paneSource.style.width = newW + 'px';
+    panePreview.style.flex = '1';
+    cm.refresh();
+  });
+  document.addEventListener('mouseup', () => {
+    dragging = false;
+    divider.classList.remove('dragging');
+    document.body.style.userSelect = '';
+  });
+})();
+</script>
+</body>
+</html>
