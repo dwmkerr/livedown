@@ -209,6 +209,46 @@
       color: #f38ba8; font-size: .9em; line-height: 1.5;
     }
     #landing-error.visible { display: block; }
+
+    /* ── Edit-token modal ────────────────────────────────────── */
+    #token-modal {
+      display: none; position: fixed; inset: 0; z-index: 200;
+      background: rgba(0,0,0,.55);
+      justify-content: center; align-items: center;
+    }
+    #token-modal.open { display: flex; }
+    #token-box {
+      background: #1e1e2e; border: 1px solid #313244; border-radius: 8px;
+      padding: 1.5rem; width: 340px; text-align: center;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      color: #cdd6f4;
+    }
+    #token-box h3 { margin: 0 0 .5rem; font-size: 1.1em; }
+    #token-box p { margin: 0 0 1rem; font-size: .85em; color: #a6adc8; }
+    #token-input {
+      width: 100%; padding: .5rem; border: 1px solid #313244;
+      border-radius: 4px; background: #313244; color: #cdd6f4;
+      font-family: 'SFMono-Regular', Consolas, monospace; font-size: .9em;
+      text-align: center; outline: none;
+    }
+    #token-input:focus { border-color: #89b4fa; }
+    #token-input.error { border-color: #f38ba8; }
+    #token-submit {
+      margin-top: .8rem; padding: .45rem 1.5rem;
+      background: #89b4fa; color: #1e1e2e; border: none; border-radius: 4px;
+      font-weight: 600; cursor: pointer; font-size: .9em;
+    }
+    #token-submit:hover { background: #74c7ec; }
+    #token-cancel {
+      margin-top: .5rem; padding: .3rem 1rem;
+      background: none; color: #6c7086; border: none; cursor: pointer;
+      font-size: .8em;
+    }
+    #token-cancel:hover { color: #cdd6f4; }
+    #token-error-msg {
+      color: #f38ba8; font-size: .8em; margin-top: .5rem;
+      display: none;
+    }
   </style>
 </head>
 <body>
@@ -275,6 +315,19 @@
 
 <div id="edits-popover"></div>
 
+<div id="token-modal">
+  <div id="token-box">
+    <h3>Edit key required</h3>
+    <p>This document is protected. Enter the edit key to make changes.</p>
+    <input id="token-input" type="text" placeholder="Paste edit key" autocomplete="off" spellcheck="false">
+    <div id="token-error-msg">Incorrect edit key. Try again.</div>
+    <br>
+    <button id="token-submit">Unlock editing</button>
+    <br>
+    <button id="token-cancel">View only</button>
+  </div>
+</div>
+
 <div id="panes">
   <div id="pane-source">
     <div id="loading" class="active">
@@ -338,6 +391,10 @@
   let myGuestId   = null;
   let myGuestName = null;
   let myColor     = null;
+  let editToken = null;
+  let isProtected = false;
+  let editUnlocked = false;
+  let lastRemoteContent = '';
 
   function setProfile(guestId) {
     myGuestId   = guestId;
@@ -364,10 +421,17 @@
   let lastLocalEdit = 0;
   let pushTimer     = null;
 
+  cm.on('beforeChange', (instance, changeObj) => {
+    if (changeObj.origin === 'setValue') return;
+    if (isProtected && !editUnlocked) {
+      changeObj.cancel();
+      showTokenModal();
+    }
+  });
+
   cm.on('change', (instance, changeObj) => {
-    if (changeObj.origin === 'setValue') return; // ignore programmatic updates
+    if (changeObj.origin === 'setValue') return;
     lastLocalEdit = Date.now();
-    // Debounce: push 400ms after last keystroke
     clearTimeout(pushTimer);
     pushTimer = setTimeout(() => push(cm.getValue()), 400);
   });
@@ -444,6 +508,42 @@
     return d.innerHTML;
   }
 
+  // ── Edit token modal ─────────────────────────────────────────
+  const tokenModal  = document.getElementById('token-modal');
+  const tokenInput  = document.getElementById('token-input');
+  const tokenSubmit = document.getElementById('token-submit');
+  const tokenCancel = document.getElementById('token-cancel');
+  const tokenError  = document.getElementById('token-error-msg');
+
+  function showTokenModal() {
+    tokenModal.classList.add('open');
+    tokenInput.value = '';
+    tokenInput.classList.remove('error');
+    tokenError.style.display = 'none';
+    tokenInput.focus();
+  }
+
+  function hideTokenModal() {
+    tokenModal.classList.remove('open');
+  }
+
+  tokenSubmit.addEventListener('click', function () {
+    var val = tokenInput.value.trim();
+    if (!val) { tokenInput.classList.add('error'); return; }
+    editToken = val;
+    editUnlocked = true;
+    cm.setOption('readOnly', false);
+    hideTokenModal();
+  });
+
+  tokenInput.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') tokenSubmit.click();
+  });
+
+  tokenCancel.addEventListener('click', function () {
+    hideTokenModal();
+  });
+
   editsSeg.addEventListener('click', function (e) {
     e.stopPropagation();
     editsPopover.classList.toggle('open');
@@ -482,6 +582,7 @@
     ws.send(JSON.stringify({
       type: 'push',
       content,
+      editToken: editToken,
       meta: {
         editor:   myGuestName,
         editedAt: new Date().toISOString(),
@@ -515,6 +616,11 @@
           renderPreview(msg.content);
         }
         setMeta(msg.meta);
+        isProtected = !!msg.protected;
+        lastRemoteContent = msg.content || '';
+        if (isProtected && !editUnlocked) {
+          cm.setOption('readOnly', true);
+        }
         setLastEdit(msg.meta?.editor, msg.meta?.editedAt);
         if (msg.meta?.editor) recordEdit(msg.meta.editor, msg.meta.editedAt, msg.content);
         return;
@@ -522,6 +628,7 @@
 
       if (msg.type === 'update') {
         gotContent = true;
+        lastRemoteContent = msg.content || '';
         setMeta(msg.meta);
         setLastEdit(msg.meta?.editor, msg.meta?.editedAt);
         recordEdit(msg.meta?.editor, msg.meta?.editedAt, msg.content);
@@ -532,6 +639,23 @@
           cm.setValue(msg.content || '');
         } else {
           flashRemoteEdit();
+        }
+      }
+
+      if (msg.type === 'auth-error') {
+        editUnlocked = false;
+        editToken = null;
+        cm.setOption('readOnly', true);
+        tokenInput.classList.add('error');
+        tokenError.style.display = 'block';
+        showTokenModal();
+        return;
+      }
+
+      if (msg.type === 'protected') {
+        isProtected = !!msg.protected;
+        if (isProtected && !editUnlocked) {
+          cm.setOption('readOnly', true);
         }
       }
     };
