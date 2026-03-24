@@ -1,3 +1,6 @@
+---
+title: "README"
+---
 <p align="center">
   <h2 align="center"><code>📝 livedown</code></h2>
   <h3 align="center">Edit markdown locally, share it live in a browser.</h3>
@@ -27,12 +30,10 @@ Open the printed URL — anyone with the link sees your edits in real time and c
 ## How It Works
 
 ```
-  Your Machine                    Cloud                      Browser
- ┌────────────┐            ┌───────────────┐          ┌───────────────┐
- │  notes.md  │───push────▶│  PartyKit     │◀─────────│  livedown     │
- │  (editor)  │◀──pull─────│  relay        │─────────▶│  viewer       │
- └────────────┘            └───────────────┘          └───────────────┘
-     watch                    WebSocket                 edit + preview
+ Your Machine          livedown.dev          Collaborator
+ ┌──────────┐         ┌──────────┐          ┌──────────┐
+ │ notes.md │◀───────▶│          │◀────────▶│ Browser  │
+ └──────────┘         └──────────┘          └──────────┘
 ```
 
 ## Commands
