@@ -71,7 +71,9 @@ export function startWatcher(
       try {
         const msg = JSON.parse(data.toString());
         if (msg.type === "auth-error") {
-          console.error("Edit token rejected by relay — check your --edit-token value");
+          console.error(
+            "Edit token rejected by relay — check your --edit-token value"
+          );
           return;
         }
         if (msg.type !== "update") return;
