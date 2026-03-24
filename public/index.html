@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>livedown</title>
+  <!-- v2 -->
 
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <link  rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.17/codemirror.min.css">
@@ -40,6 +41,23 @@
     #sb-dot.offline { background: #f38ba8; }
     #sb-label { color: #6c7086; }
 
+    /* Join link + copy button */
+    #sb-join { cursor: pointer; }
+    #sb-join:hover { background: #313244; }
+    #sb-join-url {
+      color: #89b4fa; text-decoration: none; font-weight: 500;
+      max-width: 220px; overflow: hidden; text-overflow: ellipsis;
+      display: inline-block; vertical-align: middle;
+    }
+    #sb-join-url:hover { text-decoration: underline; }
+    #sb-join-copy {
+      background: none; border: none; cursor: pointer; padding: 0;
+      display: flex; align-items: center; opacity: .5; transition: opacity .2s;
+    }
+    #sb-join-copy:hover { opacity: 1; }
+    #sb-join-copy svg { width: 13px; height: 13px; }
+    .copy-flash { opacity: 1 !important; }
+
     /* Edits badge */
     #sb-edits-seg { cursor: pointer; position: relative; user-select: none; }
     #sb-edits-seg:hover { background: #313244; }
@@ -47,8 +65,8 @@
 
     /* Edits popover */
     #edits-popover {
-      display: none; position: absolute; bottom: 100%; left: 0;
-      width: 300px; max-height: 260px; overflow-y: auto;
+      display: none; position: fixed;
+      width: 320px; max-height: 280px; overflow-y: auto;
       background: #1e1e2e; border: 1px solid #313244; border-radius: 6px;
       box-shadow: 0 4px 16px rgba(0,0,0,.4); z-index: 100;
       font-size: 12px; padding: 6px 0;
@@ -154,6 +172,16 @@
     <span style="opacity:.5">📄</span>
     <span id="sb-file">—</span>
   </div>
+  <div class="sb-seg" id="sb-join">
+    <span style="opacity:.5">🔗</span>
+    <a id="sb-join-url" href="#" target="_blank"></a>
+    <button id="sb-join-copy" title="Copy link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#cdd6f4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+      </svg>
+    </button>
+  </div>
   <div class="sb-seg" id="sb-owner-seg" style="display:none">
     <span style="opacity:.5">👤</span>
     <span id="sb-owner"></span>
@@ -171,7 +199,6 @@
   <div class="sb-seg" id="sb-edits-seg" style="display:none">
     <span style="opacity:.5">📊</span>
     <span id="sb-edits-count">0 edits</span>
-    <div id="edits-popover"></div>
   </div>
   <div id="profile">
     <div id="profile-avatar">?</div>
@@ -182,6 +209,8 @@
     <span id="sb-label">connecting…</span>
   </div>
 </div>
+
+<div id="edits-popover"></div>
 
 <div id="panes">
   <div id="pane-source">
@@ -198,6 +227,25 @@
   const docName  = location.hash.replace(/^#/, '') || 'doc';
   document.getElementById('sb-file').textContent = docName + '.md';
   document.title = docName + ' · livedown';
+
+  // ── Join link ──────────────────────────────────────────────
+  var joinUrl = location.origin + '/#' + docName;
+  var joinUrlEl = document.getElementById('sb-join-url');
+  var joinCopyBtn = document.getElementById('sb-join-copy');
+  joinUrlEl.href = joinUrl;
+  joinUrlEl.textContent = joinUrl;
+  joinCopyBtn.addEventListener('click', function (e) {
+    e.preventDefault();
+    e.stopPropagation();
+    navigator.clipboard.writeText(joinUrl).then(function () {
+      joinCopyBtn.classList.add('copy-flash');
+      joinCopyBtn.title = 'Copied!';
+      setTimeout(function () {
+        joinCopyBtn.classList.remove('copy-flash');
+        joinCopyBtn.title = 'Copy link';
+      }, 1500);
+    });
+  });
 
   // Guest colours — cycling palette
   const PALETTE = ['#89b4fa','#a6e3a1','#f38ba8','#fab387','#f9e2af','#cba6f7','#94e2d5','#eba0ac'];
@@ -313,6 +361,11 @@
   editsSeg.addEventListener('click', function (e) {
     e.stopPropagation();
     editsPopover.classList.toggle('open');
+    if (editsPopover.classList.contains('open')) {
+      var r = editsSeg.getBoundingClientRect();
+      editsPopover.style.top = r.bottom + 'px';
+      editsPopover.style.right = (window.innerWidth - r.right) + 'px';
+    }
   });
   document.addEventListener('click', function () {
     editsPopover.classList.remove('open');
