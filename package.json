@@ -48,6 +48,7 @@
     "chokidar": "^4.0.0",
     "commander": "^11.1.0",
     "gray-matter": "^4.0.3",
+    "open": "^11.0.0",
     "ws": "^8.19.0"
   },
   "devDependencies": {

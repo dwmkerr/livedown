@@ -1,6 +1,3 @@
----
-title: "README"
----
 <p align="center">
   <h2 align="center"><code>📝 livedown</code></h2>
   <h3 align="center">Edit markdown locally, share it live in a browser.</h3>
@@ -22,17 +19,21 @@ title: "README"
 npx @dwmkerr/livedown share ./your-file.md
 ```
 
-Open the printed URL — anyone with the link sees your edits in real time.
+Open the printed URL — anyone with the link sees your edits in real time and can edit the file as well.
 
 > [!WARNING]
 > **Work in Progress** — livedown exposes the contents of local files over the internet. Guardrails to prevent unintended file exposure are being developed. Use with caution and avoid sharing sensitive files.
 
 ## How It Works
 
-- A local file watcher detects changes and pushes them to a relay via WebSocket
-- Viewers connect to the relay and see updates in ~200ms
-- Browser viewers get a split-pane editor (CodeMirror + live preview) and can push changes back
-- Changes from the browser are written back to your local file automatically
+```
+  Your Machine                    Cloud                      Browser
+ ┌────────────┐            ┌───────────────┐          ┌───────────────┐
+ │  notes.md  │───push────▶│  PartyKit     │◀─────────│  livedown     │
+ │  (editor)  │◀──pull─────│  relay        │─────────▶│  viewer       │
+ └────────────┘            └───────────────┘          └───────────────┘
+     watch                    WebSocket                 edit + preview
+```
 
 ## Commands
 
@@ -44,12 +45,12 @@ Watch a local file and share it live.
 livedown share ./notes.md
 ```
 
-### `livedown join <url>`
+### `livedown open <url>`
 
 Open a shared document in the browser.
 
 ```bash
-livedown join https://livedown.dwmkerr.partykit.dev/#notes
+livedown open https://livedown.dwmkerr.partykit.dev/#abc123/notes.md
 ```
 
 ## Developer Guide

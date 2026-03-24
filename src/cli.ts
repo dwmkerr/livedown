@@ -1,13 +1,15 @@
 #!/usr/bin/env node
 
 import crypto from "crypto";
-import { execSync } from "child_process";
 import fs from "fs";
 import os from "os";
 import path from "path";
 import { Command } from "commander";
 import { startWatcher } from "./watcher";
 
+const pkg = JSON.parse(
+  fs.readFileSync(path.resolve(__dirname, "..", "package.json"), "utf8")
+);
 const DEFAULT_RELAY = "livedown.dwmkerr.partykit.dev";
 
 function shortId(): string {
@@ -56,7 +58,7 @@ const program = new Command();
 program
   .name("livedown")
   .description("Edit markdown locally, share it live in a browser.")
-  .version("0.1.0");
+  .version(pkg.version);
 
 program
   .command("share")
@@ -71,19 +73,9 @@ program
   .command("open")
   .description("Open a shared document in the browser")
   .argument("<url>", "Livedown viewer URL")
-  .action((url: string) => {
-    const platform = process.platform;
-    const cmd =
-      platform === "darwin"
-        ? "open"
-        : platform === "win32"
-          ? "start"
-          : "xdg-open";
-    try {
-      execSync(`${cmd} ${JSON.stringify(url)}`, { stdio: "ignore" });
-    } catch {
-      console.log(`Open in your browser:\n\n  ${url}\n`);
-    }
+  .action(async (url: string) => {
+    const open = (await import("open")).default;
+    await open(url);
   });
 
 // No subcommand — prompt for file path
