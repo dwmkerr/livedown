@@ -60,9 +60,10 @@ program
       const viewerProto = relay.startsWith("localhost") ? "http" : "https";
       const viewerUrl = `${viewerProto}://${relay}/#${doc}`;
 
-      console.log(`Watching: ${filePath}`);
-      console.log(`Room:     ${roomUrl}`);
-      console.log(`Viewer:   ${viewerUrl}\n`);
+      console.log(`\n  Watching  ${filePath}`);
+      console.log(
+        `  Join      \x1b[4m\x1b]8;;${viewerUrl}\x07${viewerUrl}\x1b]8;;\x07\x1b[24m\n`
+      );
 
       startWatcher(filePath, doc, roomUrl, opts.editor);
     }

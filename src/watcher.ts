@@ -88,7 +88,16 @@ export function startWatcher(
         if (newRaw !== currentRaw) {
           ignoreNextWrite = true;
           fs.writeFileSync(filePath, newRaw, "utf8");
-          console.log("Remote update written to", filePath);
+          const who = meta.editor || "unknown";
+          const preview = (msg.content || "")
+            .replace(/\n/g, " ")
+            .trim()
+            .slice(0, 60);
+          const dim = "\x1b[2m";
+          const reset = "\x1b[0m";
+          console.log(
+            `  ${dim}${who}${reset}  ${preview}${preview.length >= 60 ? "..." : ""}`
+          );
         }
       } catch {
         /* ignore malformed */

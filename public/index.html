@@ -40,6 +40,36 @@
     #sb-dot.offline { background: #f38ba8; }
     #sb-label { color: #6c7086; }
 
+    /* Edits badge */
+    #sb-edits-seg { cursor: pointer; position: relative; user-select: none; }
+    #sb-edits-seg:hover { background: #313244; }
+    #sb-edits-count { color: #f9e2af; font-weight: 600; }
+
+    /* Edits popover */
+    #edits-popover {
+      display: none; position: absolute; bottom: 100%; left: 0;
+      width: 300px; max-height: 260px; overflow-y: auto;
+      background: #1e1e2e; border: 1px solid #313244; border-radius: 6px;
+      box-shadow: 0 4px 16px rgba(0,0,0,.4); z-index: 100;
+      font-size: 12px; padding: 6px 0;
+    }
+    #edits-popover.open { display: block; }
+    .edit-row {
+      display: flex; align-items: center; gap: 8px;
+      padding: 5px 12px; border-bottom: 1px solid #313244;
+    }
+    .edit-row:last-child { border-bottom: none; }
+    .edit-who {
+      font-weight: 600; white-space: nowrap; flex-shrink: 0;
+    }
+    .edit-preview {
+      color: #6c7086; overflow: hidden; text-overflow: ellipsis;
+      white-space: nowrap; flex: 1; min-width: 0;
+    }
+    .edit-time {
+      color: #6c7086; font-size: 10px; white-space: nowrap; flex-shrink: 0;
+    }
+
     /* Profile badge — top right */
     #profile {
       display: flex; align-items: center; gap: 6px;
@@ -138,6 +168,11 @@
   </div>
   <!-- spacer pushes right-side items to the edge -->
   <div style="flex:1"></div>
+  <div class="sb-seg" id="sb-edits-seg" style="display:none">
+    <span style="opacity:.5">📊</span>
+    <span id="sb-edits-count">0 edits</span>
+    <div id="edits-popover"></div>
+  </div>
   <div id="profile">
     <div id="profile-avatar">?</div>
     <span id="profile-name">connecting…</span>
@@ -240,6 +275,49 @@
     seg.style.display = '';
   }
 
+  // ── Edit history ────────────────────────────────────────────
+  const editHistory = [];  // { editor, time, preview }
+  const editsSeg     = document.getElementById('sb-edits-seg');
+  const editsCount   = document.getElementById('sb-edits-count');
+  const editsPopover = document.getElementById('edits-popover');
+
+  function recordEdit(editor, ts, content) {
+    if (!editor) return;
+    const preview = (content || '').replace(/\n/g, ' ').trim().slice(0, 80);
+    editHistory.unshift({ editor, time: ts, preview });
+    if (editHistory.length > 50) editHistory.pop();
+
+    const n = editHistory.length;
+    editsCount.textContent = n + (n === 1 ? ' edit' : ' edits');
+    editsSeg.style.display = '';
+    renderPopover();
+  }
+
+  function renderPopover() {
+    editsPopover.innerHTML = editHistory.map(function (e) {
+      var t = e.time ? new Date(e.time).toLocaleTimeString() : '';
+      return '<div class="edit-row">'
+        + '<span class="edit-who" style="color:' + (PALETTE[(editHistory.indexOf(e)) % PALETTE.length]) + '">' + escHtml(e.editor) + '</span>'
+        + '<span class="edit-preview">' + escHtml(e.preview) + '</span>'
+        + '<span class="edit-time">' + t + '</span>'
+        + '</div>';
+    }).join('');
+  }
+
+  function escHtml(s) {
+    var d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+  }
+
+  editsSeg.addEventListener('click', function (e) {
+    e.stopPropagation();
+    editsPopover.classList.toggle('open');
+  });
+  document.addEventListener('click', function () {
+    editsPopover.classList.remove('open');
+  });
+
   // ── Render preview ───────────────────────────────────────────
   function renderPreview(content) {
     document.getElementById('preview-inner').innerHTML = marked.parse(content || '');
@@ -272,8 +350,8 @@
         color:    myColor,
       },
     }));
-    // Update preview locally immediately
     renderPreview(content);
+    recordEdit(myGuestName, new Date().toISOString(), content);
   }
 
   function connect() {
@@ -292,12 +370,14 @@
         }
         setMeta(msg.meta);
         setLastEdit(msg.meta?.editor, msg.meta?.editedAt);
+        if (msg.meta?.editor) recordEdit(msg.meta.editor, msg.meta.editedAt, msg.content);
         return;
       }
 
       if (msg.type === 'update') {
         setMeta(msg.meta);
         setLastEdit(msg.meta?.editor, msg.meta?.editedAt);
+        recordEdit(msg.meta?.editor, msg.meta?.editedAt, msg.content);
         renderPreview(msg.content || '');
 
         // Only update the editor if user hasn't typed in the last 1.5s
