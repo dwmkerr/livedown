@@ -1,6 +1,6 @@
 {
   "name": "@dwmkerr/livedown",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Edit markdown locally, share it live in a browser.",
   "type": "commonjs",
   "main": "./dist/cli.js",
