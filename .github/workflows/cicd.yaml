@@ -36,29 +36,29 @@ jobs:
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
     outputs:
-      released: ${{ steps.release-please.outputs.release_created }}
-      tag: ${{ steps.release-please.outputs.tag_name }}
+      releases_created: ${{ steps.release-please.outputs.releases_created }}
     steps:
       - uses: googleapis/release-please-action@v4
         id: release-please
         with:
-          config-file: .github/release-please-config.json
-          manifest-file: .github/release-please-manifest.json
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
 
   publish-npm:
     needs: [release]
-    if: ${{ needs.release.outputs.released }}
+    if: needs.release.outputs.releases_created == 'true'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ needs.release.outputs.tag }}
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
           registry-url: "https://registry.npmjs.org"
       - run: npm ci
       - run: npm run build
-      - run: npm publish
+      - run: npm publish --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
