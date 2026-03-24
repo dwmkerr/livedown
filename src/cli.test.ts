@@ -9,8 +9,8 @@ describe("cli", () => {
       encoding: "utf8",
     });
     expect(output).toContain("livedown");
-    expect(output).toContain("file");
-    expect(output).toContain("deploy");
+    expect(output).toContain("share");
+    expect(output).toContain("open");
   });
 
   it("should show version", () => {

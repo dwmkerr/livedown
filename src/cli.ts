@@ -1,81 +1,99 @@
 #!/usr/bin/env node
 
+import { execSync } from "child_process";
 import fs from "fs";
 import os from "os";
 import path from "path";
 import { Command } from "commander";
 import { startWatcher } from "./watcher";
 
+const DEFAULT_RELAY = "livedown.dwmkerr.partykit.dev";
+
+function buildViewerUrl(relay: string, doc: string): string {
+  const proto = relay.startsWith("localhost") ? "http" : "https";
+  return `${proto}://${relay}/#${doc}`;
+}
+
+function buildRoomUrl(relay: string, doc: string): string {
+  const proto = relay.startsWith("localhost") ? "ws" : "wss";
+  return `${proto}://${relay}/parties/main/${encodeURIComponent(doc)}`;
+}
+
+function startSharing(
+  file: string,
+  opts: { relay: string; editor: string; doc?: string }
+): void {
+  const filePath = path.resolve(file);
+  if (!fs.existsSync(filePath)) {
+    console.error(`Error: file not found: ${filePath}`);
+    process.exit(1);
+  }
+
+  const doc = opts.doc || path.basename(filePath, path.extname(filePath));
+  const viewerUrl = buildViewerUrl(opts.relay, doc);
+  const roomUrl = buildRoomUrl(opts.relay, doc);
+
+  console.log(`\n  Watching  ${filePath}`);
+  console.log(
+    `  Join      \x1b[4m\x1b]8;;${viewerUrl}\x07${viewerUrl}\x1b]8;;\x07\x1b[24m\n`
+  );
+
+  startWatcher(filePath, doc, roomUrl, opts.editor);
+}
+
+const defaultRelay = process.env.PARTYKIT_HOST || DEFAULT_RELAY;
+const defaultEditor =
+  process.env.LIVEDOWN_EDITOR || os.hostname().split(".")[0];
+
 const program = new Command();
 
 program
   .name("livedown")
   .description("Edit markdown locally, share it live in a browser.")
-  .version("0.1.0")
-  .argument("[file]", "Path to the markdown file to watch")
-  .option(
-    "-d, --doc <name>",
-    "Document name (defaults to filename without extension)"
-  )
-  .option(
-    "-r, --relay <host>",
-    "PartyKit relay host",
-    process.env.PARTYKIT_HOST || "livedown.dwmkerr.partykit.dev"
-  )
-  .option(
-    "-e, --editor <name>",
-    "Editor name shown to viewers",
-    process.env.LIVEDOWN_EDITOR || os.hostname().split(".")[0]
-  )
-  .option(
-    "-p, --password <password>",
-    "Room password",
-    process.env.LIVEDOWN_PASSWORD
-  )
-  .action(
-    (
-      file: string | undefined,
-      opts: {
-        doc?: string;
-        relay: string;
-        editor: string;
-        password?: string;
-      }
-    ) => {
-      if (!file) {
-        program.help();
-        return;
-      }
-
-      const filePath = path.resolve(file);
-      if (!fs.existsSync(filePath)) {
-        console.error(`Error: file not found: ${filePath}`);
-        process.exit(1);
-      }
-
-      const doc = opts.doc || path.basename(filePath, path.extname(filePath));
-      const relay = opts.relay;
-      const proto = relay.startsWith("localhost") ? "ws" : "wss";
-      const roomUrl = `${proto}://${relay}/parties/main/${encodeURIComponent(doc)}`;
-      const viewerProto = relay.startsWith("localhost") ? "http" : "https";
-      const viewerUrl = `${viewerProto}://${relay}/#${doc}`;
-
-      console.log(`\n  Watching  ${filePath}`);
-      console.log(
-        `  Join      \x1b[4m\x1b]8;;${viewerUrl}\x07${viewerUrl}\x1b]8;;\x07\x1b[24m\n`
-      );
-
-      startWatcher(filePath, doc, roomUrl, opts.editor);
-    }
-  );
+  .version("0.1.0");
 
 program
-  .command("deploy")
-  .description("Deploy your own PartyKit relay")
-  .action(() => {
-    console.log("Run the following to deploy your own relay:\n");
-    console.log("  npx partykit deploy\n");
-    console.log("Then use --relay <your-host> when running livedown start.");
+  .command("share")
+  .description("Watch a local file and share it live")
+  .argument("<file>", "Path to the markdown file")
+  .option("-r, --relay <host>", "Relay host", defaultRelay)
+  .option("-e, --editor <name>", "Your name shown to viewers", defaultEditor)
+  .option("-d, --doc <name>", "Document name (defaults to filename)")
+  .action(startSharing);
+
+program
+  .command("open")
+  .description("Open a shared document in the browser")
+  .argument("<url>", "Livedown viewer URL")
+  .action((url: string) => {
+    const platform = process.platform;
+    const cmd =
+      platform === "darwin"
+        ? "open"
+        : platform === "win32"
+          ? "start"
+          : "xdg-open";
+    try {
+      execSync(`${cmd} ${JSON.stringify(url)}`, { stdio: "ignore" });
+    } catch {
+      console.log(`Open in your browser:\n\n  ${url}\n`);
+    }
   });
 
-program.parse();
+// No subcommand — interactive file picker
+if (process.argv.length === 2) {
+  (async () => {
+    const { fileSelector } = await import("inquirer-file-selector");
+    const file = await fileSelector({
+      message: "File to share:",
+      allowCancel: true,
+    });
+    if (!file) process.exit(0);
+    startSharing(String(file), {
+      relay: defaultRelay,
+      editor: defaultEditor,
+    });
+  })();
+} else {
+  program.parse();
+}
