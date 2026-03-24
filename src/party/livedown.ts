@@ -8,17 +8,18 @@ export default class LivedownRoom implements Party.Server {
   constructor(readonly room: Party.Room) {}
 
   onConnect(conn: Party.Connection) {
-    // Assign a guest number, stash it on the connection
     this.guestCounter++;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (conn as any).guestId = this.guestCounter;
 
-    // Send current state + their assigned guest ID
-    conn.send(JSON.stringify({
-      type: "init",
-      content: this.latestContent,
-      meta: this.latestMeta,
-      guestId: this.guestCounter,
-    }));
+    conn.send(
+      JSON.stringify({
+        type: "init",
+        content: this.latestContent,
+        meta: this.latestMeta,
+        guestId: this.guestCounter,
+      })
+    );
   }
 
   onMessage(message: string, sender: Party.Connection) {
@@ -29,12 +30,16 @@ export default class LivedownRoom implements Party.Server {
       this.latestContent = msg.content;
       this.latestMeta = msg.meta || {};
 
-      // Broadcast to everyone except the sender
-      this.room.broadcast(JSON.stringify({
-        type: "update",
-        content: msg.content,
-        meta: msg.meta || {},
-      }), [sender.id]);
-    } catch { /* ignore malformed */ }
+      this.room.broadcast(
+        JSON.stringify({
+          type: "update",
+          content: msg.content,
+          meta: msg.meta || {},
+        }),
+        [sender.id]
+      );
+    } catch {
+      /* ignore malformed */
+    }
   }
 }

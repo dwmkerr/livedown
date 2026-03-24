@@ -4,7 +4,6 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>livedown</title>
-
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <link  rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.17/codemirror.min.css">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.17/codemirror.min.js"></script>
@@ -39,6 +38,53 @@
     #sb-dot.live    { background: #a6e3a1; }
     #sb-dot.offline { background: #f38ba8; }
     #sb-label { color: #6c7086; }
+
+    /* Join link + copy button */
+    #sb-join { cursor: pointer; }
+    #sb-join:hover { background: #313244; }
+    #sb-join-url {
+      color: #89b4fa; text-decoration: none; font-weight: 500;
+      max-width: 220px; overflow: hidden; text-overflow: ellipsis;
+      display: inline-block; vertical-align: middle;
+    }
+    #sb-join-url:hover { text-decoration: underline; }
+    #sb-join-copy {
+      background: none; border: none; cursor: pointer; padding: 0;
+      display: flex; align-items: center; opacity: .5; transition: opacity .2s;
+    }
+    #sb-join-copy:hover { opacity: 1; }
+    #sb-join-copy svg { width: 13px; height: 13px; }
+    .copy-flash { opacity: 1 !important; }
+
+    /* Edits badge */
+    #sb-edits-seg { cursor: pointer; position: relative; user-select: none; }
+    #sb-edits-seg:hover { background: #313244; }
+    #sb-edits-count { color: #f9e2af; font-weight: 600; }
+
+    /* Edits popover */
+    #edits-popover {
+      display: none; position: fixed;
+      width: 320px; max-height: 280px; overflow-y: auto;
+      background: #1e1e2e; border: 1px solid #313244; border-radius: 6px;
+      box-shadow: 0 4px 16px rgba(0,0,0,.4); z-index: 100;
+      font-size: 12px; padding: 6px 0;
+    }
+    #edits-popover.open { display: block; }
+    .edit-row {
+      display: flex; align-items: center; gap: 8px;
+      padding: 5px 12px; border-bottom: 1px solid #313244;
+    }
+    .edit-row:last-child { border-bottom: none; }
+    .edit-who {
+      font-weight: 600; white-space: nowrap; flex-shrink: 0;
+    }
+    .edit-preview {
+      color: #6c7086; overflow: hidden; text-overflow: ellipsis;
+      white-space: nowrap; flex: 1; min-width: 0;
+    }
+    .edit-time {
+      color: #6c7086; font-size: 10px; white-space: nowrap; flex-shrink: 0;
+    }
 
     /* Profile badge — top right */
     #profile {
@@ -115,14 +161,86 @@
                                  color: #6a737d; margin: 0 0 1em; }
     #preview-inner a { color: #0366d6; }
     #preview-inner hr { border: none; border-top: 1px solid #e1e4e8; margin: 1.5em 0; }
+
+    /* ── Landing page ─────────────────────────────────────── */
+    #landing {
+      display: none; height: 100vh;
+      background: #1e1e2e; color: #cdd6f4;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    }
+    #landing-inner {
+      max-width: 520px; margin: 0 auto; padding: 12vh 2rem 4rem;
+    }
+    #landing h1 { font-size: 2em; margin: 0 0 .3em; color: #89b4fa; }
+    #landing p { line-height: 1.7; margin: 0 0 1.2em; color: #a6adc8; }
+    #landing code {
+      background: #313244; padding: .2em .5em; border-radius: 4px;
+      font-family: 'SFMono-Regular', Consolas, monospace; font-size: .9em;
+      color: #a6e3a1;
+    }
+    #landing pre {
+      background: #313244; padding: 1rem 1.2rem; border-radius: 6px;
+      overflow-x: auto; margin: 0 0 1.2em; line-height: 1.6;
+    }
+    #landing pre code { background: none; padding: 0; }
+    #landing .dim { color: #6c7086; }
+
+    /* ── Loading overlay ──────────────────────────────────── */
+    #loading {
+      display: none; position: absolute; inset: 0; z-index: 50;
+      background: #1e1e2e;
+      justify-content: center; align-items: center;
+      flex-direction: column; gap: 12px;
+      color: #6c7086; font-size: 13px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    }
+    #loading.active { display: flex; }
+    .spinner {
+      width: 24px; height: 24px; border: 2px solid #313244;
+      border-top-color: #89b4fa; border-radius: 50%;
+      animation: spin .8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Error banner ─────────────────────────────────────── */
+    #landing-error {
+      display: none; background: #45273a; border: 1px solid #f38ba8;
+      border-radius: 6px; padding: .8em 1em; margin-bottom: 1.5em;
+      color: #f38ba8; font-size: .9em; line-height: 1.5;
+    }
+    #landing-error.visible { display: block; }
   </style>
 </head>
 <body>
+
+<div id="landing">
+  <div id="landing-inner">
+    <div id="landing-error"></div>
+    <h1>livedown</h1>
+    <p>Edit markdown locally, share it live in a browser.</p>
+    <pre><code>npx @dwmkerr/livedown share ./your-file.md</code></pre>
+    <p>Your file will be live at <code>livedown.dwmkerr.partykit.dev/#...</code></p>
+    <p class="dim" style="margin-top:2em">
+      <a href="https://github.com/dwmkerr/livedown" style="color:#89b4fa;text-decoration:none">
+        <svg style="width:14px;height:14px;vertical-align:-2px;margin-right:4px" viewBox="0 0 16 16" fill="#89b4fa"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>dwmkerr/livedown</a>
+    </p>
+  </div>
+</div>
 
 <div id="statusbar">
   <div class="sb-seg">
     <span style="opacity:.5">📄</span>
     <span id="sb-file">—</span>
+  </div>
+  <div class="sb-seg" id="sb-join">
+    <span style="opacity:.5">🔗</span>
+    <a id="sb-join-url" href="#" target="_blank"></a>
+    <button id="sb-join-copy" title="Copy link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#cdd6f4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+      </svg>
+    </button>
   </div>
   <div class="sb-seg" id="sb-owner-seg" style="display:none">
     <span style="opacity:.5">👤</span>
@@ -138,6 +256,13 @@
   </div>
   <!-- spacer pushes right-side items to the edge -->
   <div style="flex:1"></div>
+  <div class="sb-seg" id="sb-edits-seg" style="display:none">
+    <span style="opacity:.5">📊</span>
+    <span id="sb-edits-count">0 edits</span>
+  </div>
+  <a class="sb-seg" href="https://github.com/dwmkerr/livedown" target="_blank" title="GitHub" style="text-decoration:none;border-right:none">
+    <svg style="width:14px;height:14px;opacity:.5" viewBox="0 0 16 16" fill="#cdd6f4"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+  </a>
   <div id="profile">
     <div id="profile-avatar">?</div>
     <span id="profile-name">connecting…</span>
@@ -148,8 +273,14 @@
   </div>
 </div>
 
+<div id="edits-popover"></div>
+
 <div id="panes">
   <div id="pane-source">
+    <div id="loading" class="active">
+      <div class="spinner"></div>
+      <span>Connecting...</span>
+    </div>
     <textarea id="cm-source"></textarea>
   </div>
   <div id="divider"></div>
@@ -160,9 +291,47 @@
 
 <script>
 (function () {
-  const docName  = location.hash.replace(/^#/, '') || 'doc';
-  document.getElementById('sb-file').textContent = docName + '.md';
+  function showLanding(errorMsg) {
+    document.getElementById('landing').style.display = 'block';
+    document.getElementById('statusbar').style.display = 'none';
+    document.getElementById('panes').style.display = 'none';
+    document.getElementById('edits-popover').style.display = 'none';
+    document.title = 'livedown';
+    if (errorMsg) {
+      var el = document.getElementById('landing-error');
+      el.textContent = errorMsg;
+      el.classList.add('visible');
+    }
+  }
+
+  // No hash — show landing page
+  if (!location.hash || location.hash === '#') {
+    showLanding();
+    return;
+  }
+
+  const docName  = location.hash.replace(/^#/, '');
+  document.getElementById('sb-file').textContent = docName;
   document.title = docName + ' · livedown';
+
+  // ── Join link ──────────────────────────────────────────────
+  var joinUrl = location.origin + '/#' + docName;
+  var joinUrlEl = document.getElementById('sb-join-url');
+  var joinCopyBtn = document.getElementById('sb-join-copy');
+  joinUrlEl.href = joinUrl;
+  joinUrlEl.textContent = joinUrl;
+  joinCopyBtn.addEventListener('click', function (e) {
+    e.preventDefault();
+    e.stopPropagation();
+    navigator.clipboard.writeText(joinUrl).then(function () {
+      joinCopyBtn.classList.add('copy-flash');
+      joinCopyBtn.title = 'Copied!';
+      setTimeout(function () {
+        joinCopyBtn.classList.remove('copy-flash');
+        joinCopyBtn.title = 'Copy link';
+      }, 1500);
+    });
+  });
 
   // Guest colours — cycling palette
   const PALETTE = ['#89b4fa','#a6e3a1','#f38ba8','#fab387','#f9e2af','#cba6f7','#94e2d5','#eba0ac'];
@@ -218,7 +387,7 @@
     const repo  = meta.github_repo || '';
     const title = meta.title || docName;
 
-    document.getElementById('sb-file').textContent = (meta.file || docName) + '.md';
+    document.getElementById('sb-file').textContent = meta.file || docName;
     document.title = title + ' · livedown';
 
     const ownerSeg = document.getElementById('sb-owner-seg');
@@ -239,6 +408,54 @@
     document.getElementById('sb-lastedit').textContent = editor + (time ? '  ' + time : '');
     seg.style.display = '';
   }
+
+  // ── Edit history ────────────────────────────────────────────
+  const editHistory = [];  // { editor, time, preview }
+  const editsSeg     = document.getElementById('sb-edits-seg');
+  const editsCount   = document.getElementById('sb-edits-count');
+  const editsPopover = document.getElementById('edits-popover');
+
+  function recordEdit(editor, ts, content) {
+    if (!editor) return;
+    const preview = (content || '').replace(/\n/g, ' ').trim().slice(0, 80);
+    editHistory.unshift({ editor, time: ts, preview });
+    if (editHistory.length > 50) editHistory.pop();
+
+    const n = editHistory.length;
+    editsCount.textContent = n + (n === 1 ? ' edit' : ' edits');
+    editsSeg.style.display = '';
+    renderPopover();
+  }
+
+  function renderPopover() {
+    editsPopover.innerHTML = editHistory.map(function (e) {
+      var t = e.time ? new Date(e.time).toLocaleTimeString() : '';
+      return '<div class="edit-row">'
+        + '<span class="edit-who" style="color:' + (PALETTE[(editHistory.indexOf(e)) % PALETTE.length]) + '">' + escHtml(e.editor) + '</span>'
+        + '<span class="edit-preview">' + escHtml(e.preview) + '</span>'
+        + '<span class="edit-time">' + t + '</span>'
+        + '</div>';
+    }).join('');
+  }
+
+  function escHtml(s) {
+    var d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+  }
+
+  editsSeg.addEventListener('click', function (e) {
+    e.stopPropagation();
+    editsPopover.classList.toggle('open');
+    if (editsPopover.classList.contains('open')) {
+      var r = editsSeg.getBoundingClientRect();
+      editsPopover.style.top = r.bottom + 'px';
+      editsPopover.style.right = (window.innerWidth - r.right) + 'px';
+    }
+  });
+  document.addEventListener('click', function () {
+    editsPopover.classList.remove('open');
+  });
 
   // ── Render preview ───────────────────────────────────────────
   function renderPreview(content) {
@@ -272,32 +489,42 @@
         color:    myColor,
       },
     }));
-    // Update preview locally immediately
     renderPreview(content);
+    recordEdit(myGuestName, new Date().toISOString(), content);
   }
+
+  var gotContent = false;
 
   function connect() {
     ws = new WebSocket(url);
 
-    ws.onopen = () => { setStatus('live'); reconnectDelay = 1000; };
+    ws.onopen = () => {
+      setStatus('live');
+      reconnectDelay = 1000;
+      document.getElementById('loading').classList.remove('active');
+    };
 
     ws.onmessage = (e) => {
       const msg = JSON.parse(e.data);
 
       if (msg.type === 'init') {
         setProfile(msg.guestId);
+        if (msg.content) gotContent = true;
         if (msg.content) {
           cm.setValue(msg.content);
           renderPreview(msg.content);
         }
         setMeta(msg.meta);
         setLastEdit(msg.meta?.editor, msg.meta?.editedAt);
+        if (msg.meta?.editor) recordEdit(msg.meta.editor, msg.meta.editedAt, msg.content);
         return;
       }
 
       if (msg.type === 'update') {
+        gotContent = true;
         setMeta(msg.meta);
         setLastEdit(msg.meta?.editor, msg.meta?.editedAt);
+        recordEdit(msg.meta?.editor, msg.meta?.editedAt, msg.content);
         renderPreview(msg.content || '');
 
         // Only update the editor if user hasn't typed in the last 1.5s
@@ -317,6 +544,14 @@
   }
 
   connect();
+
+  // Show not-found if no content arrives within 8s
+  setTimeout(function () {
+    if (!gotContent) {
+      var name = docName.split('/').pop() || docName;
+      showLanding(name + ' not found — no one is sharing this document. See below to get started.');
+    }
+  }, 8000);
 
   // ── Draggable divider ────────────────────────────────────────
   const divider     = document.getElementById('divider');

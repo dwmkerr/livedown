@@ -1,12 +1,69 @@
 {
   "name": "@dwmkerr/livedown",
   "version": "0.1.0",
-  "description": "Edit markdown locally, share it live.",
-  "scripts": {
-    "start": "node watcher.js",
-    "deploy": "partykit deploy"
+  "description": "Edit markdown locally, share it live in a browser.",
+  "type": "commonjs",
+  "main": "./dist/cli.js",
+  "bin": {
+    "livedown": "dist/cli.js"
   },
-  "keywords": ["markdown", "live", "collaboration", "partykit"],
+  "scripts": {
+    "build": "tsc",
+    "build:watch": "tsc -w",
+    "dev": "tsx watch src/cli.ts",
+    "start": "ts-node ./src/cli.ts",
+    "lint": "eslint .",
+    "lint:fix": "eslint --fix .",
+    "test": "jest --no-coverage",
+    "test:cov": "jest --coverage",
+    "prepare": "husky"
+  },
+  "files": [
+    "dist",
+    "public"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dwmkerr/livedown.git"
+  },
+  "bugs": {
+    "url": "https://github.com/dwmkerr/livedown/issues"
+  },
+  "homepage": "https://github.com/dwmkerr/livedown#readme",
+  "keywords": [
+    "markdown",
+    "live",
+    "preview",
+    "collaborative",
+    "partykit",
+    "websocket"
+  ],
   "author": "Dave Kerr",
-  "license": "MIT"
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@inquirer/prompts": "^8.3.2",
+    "chokidar": "^4.0.0",
+    "commander": "^11.1.0",
+    "gray-matter": "^4.0.3",
+    "open": "^11.0.0",
+    "ws": "^8.19.0"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.14",
+    "@types/node": "^20.11.5",
+    "@types/ws": "^8.5.10",
+    "eslint": "^9.39.4",
+    "eslint-plugin-prettier": "^5.0.1",
+    "husky": "^9.1.7",
+    "jest": "^30.3.0",
+    "partykit": "^0.0.115",
+    "ts-jest": "^29.4.6",
+    "ts-node": "^10.9.2",
+    "tsx": "^4.21.0",
+    "typescript": "^5.3.3",
+    "typescript-eslint": "^8.57.2"
+  }
 }
