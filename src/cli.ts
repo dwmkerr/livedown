@@ -28,7 +28,7 @@ function buildRoomUrl(relay: string, doc: string): string {
 
 function startSharing(
   file: string,
-  opts: { relay: string; editor: string; doc?: string }
+  opts: { relay: string; editor: string; doc?: string; editToken?: string }
 ): void {
   const filePath = path.resolve(file);
   if (!fs.existsSync(filePath)) {
@@ -46,7 +46,7 @@ function startSharing(
     `  Join      \x1b[4m\x1b]8;;${viewerUrl}\x07${viewerUrl}\x1b]8;;\x07\x1b[24m\n`
   );
 
-  startWatcher(filePath, doc, roomUrl, opts.editor);
+  startWatcher(filePath, doc, roomUrl, opts.editor, opts.editToken ?? "");
 }
 
 const defaultRelay = process.env.PARTYKIT_HOST || DEFAULT_RELAY;

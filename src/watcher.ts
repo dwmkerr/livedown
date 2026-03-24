@@ -34,7 +34,8 @@ export function startWatcher(
   filePath: string,
   doc: string,
   roomUrl: string,
-  editor: string
+  editor: string,
+  editToken: string
 ): void {
   let ws: WebSocket | null = null;
   let ignoreNextWrite = false;
@@ -46,6 +47,7 @@ export function startWatcher(
       JSON.stringify({
         type: "push",
         content,
+        editToken,
         meta: {
           ...meta,
           editor,
@@ -61,12 +63,17 @@ export function startWatcher(
 
     ws.on("open", () => {
       console.log("Connected to room");
+      ws!.send(JSON.stringify({ type: "set-token", editToken }));
       push(fs.readFileSync(filePath, "utf8"));
     });
 
     ws.on("message", (data: WebSocket.Data) => {
       try {
         const msg = JSON.parse(data.toString());
+        if (msg.type === "auth-error") {
+          console.error("Edit token rejected by relay — check your --edit-token value");
+          return;
+        }
         if (msg.type !== "update") return;
 
         const meta = msg.meta || {};
