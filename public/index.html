@@ -394,7 +394,7 @@
   let editToken = null;
   let isProtected = false;
   let editUnlocked = false;
-  let lastRemoteContent = '';
+
 
   function setProfile(guestId) {
     myGuestId   = guestId;
@@ -617,7 +617,7 @@
         }
         setMeta(msg.meta);
         isProtected = !!msg.protected;
-        lastRemoteContent = msg.content || '';
+
         if (isProtected && !editUnlocked) {
           cm.setOption('readOnly', true);
         }
@@ -628,7 +628,7 @@
 
       if (msg.type === 'update') {
         gotContent = true;
-        lastRemoteContent = msg.content || '';
+
         setMeta(msg.meta);
         setLastEdit(msg.meta?.editor, msg.meta?.editedAt);
         recordEdit(msg.meta?.editor, msg.meta?.editedAt, msg.content);
@@ -646,9 +646,9 @@
         editUnlocked = false;
         editToken = null;
         cm.setOption('readOnly', true);
+        showTokenModal();
         tokenInput.classList.add('error');
         tokenError.style.display = 'block';
-        showTokenModal();
         return;
       }
 
