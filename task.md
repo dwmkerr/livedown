@@ -156,6 +156,9 @@ The CLI should read config from env vars (with CLI flag overrides):
 - [ ] `livedown deploy` — let users deploy their own PartyKit relay and use `--relay` to point at it
 - [ ] Sign in with GitHub — authenticate viewers via GitHub OAuth, show real names/avatars instead of Guest N, tie rooms to GitHub identity
 - [ ] Persistence — save document state across relay restarts
+- [ ] Editor integrations — VS Code extension, Cursor extension, Vim plugin
+- [ ] Drop in a GitHub URL (PR, issue, repo link) and render it live
+- [ ] `livedown join` — sync a local file from a remote session (reverse of share)
 
 ## Notes
 
