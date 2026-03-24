@@ -80,16 +80,19 @@ program
     }
   });
 
-// No subcommand — interactive file picker
+// No subcommand — prompt for file path
 if (process.argv.length === 2) {
   (async () => {
-    const { fileSelector } = await import("inquirer-file-selector");
-    const file = await fileSelector({
+    const { input } = await import("@inquirer/prompts");
+    const file = await input({
       message: "File to share:",
-      allowCancel: true,
+      validate: (value) => {
+        if (!value.trim()) return "Please enter a file path";
+        if (!fs.existsSync(path.resolve(value.trim()))) return "File not found";
+        return true;
+      },
     });
-    if (!file) process.exit(0);
-    startSharing(String(file), {
+    startSharing(file.trim(), {
       relay: defaultRelay,
       editor: defaultEditor,
     });
