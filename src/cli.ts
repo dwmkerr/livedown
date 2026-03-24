@@ -6,6 +6,7 @@ import os from "os";
 import path from "path";
 import { Command } from "commander";
 import { startWatcher } from "./watcher";
+import { generateEditToken } from "./token";
 
 const pkg = JSON.parse(
   fs.readFileSync(path.resolve(__dirname, "..", "package.json"), "utf8")
@@ -38,15 +39,17 @@ function startSharing(
 
   const filename = path.basename(filePath);
   const doc = opts.doc || `${shortId()}/${filename}`;
+  const editToken = opts.editToken || generateEditToken();
   const viewerUrl = buildViewerUrl(opts.relay, doc);
   const roomUrl = buildRoomUrl(opts.relay, doc);
 
   console.log(`\n  Watching  ${filePath}`);
   console.log(
-    `  Join      \x1b[4m\x1b]8;;${viewerUrl}\x07${viewerUrl}\x1b]8;;\x07\x1b[24m\n`
+    `  Join      \x1b[4m\x1b]8;;${viewerUrl}\x07${viewerUrl}\x1b]8;;\x07\x1b[24m`
   );
+  console.log(`  Edit key  \x1b[33m${editToken}\x1b[0m\n`);
 
-  startWatcher(filePath, doc, roomUrl, opts.editor, opts.editToken ?? "");
+  startWatcher(filePath, doc, roomUrl, opts.editor, editToken);
 }
 
 const defaultRelay = process.env.PARTYKIT_HOST || DEFAULT_RELAY;
@@ -67,6 +70,7 @@ program
   .option("-r, --relay <host>", "Relay host", defaultRelay)
   .option("-e, --editor <name>", "Your name shown to viewers", defaultEditor)
   .option("-d, --doc <name>", "Document name (defaults to filename)")
+  .option("-t, --edit-token <token>", "Edit token (auto-generated if omitted)")
   .action(startSharing);
 
 program

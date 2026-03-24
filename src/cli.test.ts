@@ -19,4 +19,11 @@ describe("cli", () => {
     });
     expect(output.trim()).toMatch(/^\d+\.\d+\.\d+$/);
   });
+
+  it("should show edit-token option in share help", () => {
+    const output = execSync(`npx ts-node ${cli} share --help`, {
+      encoding: "utf8",
+    });
+    expect(output).toContain("--edit-token");
+  });
 });
