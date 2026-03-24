@@ -149,11 +149,12 @@ The CLI should read config from env vars (with CLI flag overrides):
 
 - [ ] `npx @dwmkerr/livedown share ./file.md` works — publish to npm (needs NPM_TOKEN secret)
 - [ ] Security guardrails for file exposure (WIP section in README)
+- [x] Room name collisions — fixed: each session gets a unique 6-char ID prefix (e.g. `a3f2k1/readme`), `--doc` overrides for stable names
 
 ## Future
 
 - [ ] `livedown deploy` — let users deploy their own PartyKit relay and use `--relay` to point at it
-- [ ] Login with GitHub — authenticate viewers, show real names instead of Guest N
+- [ ] Sign in with GitHub — authenticate viewers via GitHub OAuth, show real names/avatars instead of Guest N, tie rooms to GitHub identity
 - [ ] Persistence — save document state across relay restarts
 
 ## Notes

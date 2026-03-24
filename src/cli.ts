@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import crypto from "crypto";
 import { execSync } from "child_process";
 import fs from "fs";
 import os from "os";
@@ -8,6 +9,10 @@ import { Command } from "commander";
 import { startWatcher } from "./watcher";
 
 const DEFAULT_RELAY = "livedown.dwmkerr.partykit.dev";
+
+function shortId(): string {
+  return crypto.randomBytes(3).toString("hex");
+}
 
 function buildViewerUrl(relay: string, doc: string): string {
   const proto = relay.startsWith("localhost") ? "http" : "https";
@@ -29,7 +34,8 @@ function startSharing(
     process.exit(1);
   }
 
-  const doc = opts.doc || path.basename(filePath, path.extname(filePath));
+  const filename = path.basename(filePath);
+  const doc = opts.doc || `${shortId()}/${filename}`;
   const viewerUrl = buildViewerUrl(opts.relay, doc);
   const roomUrl = buildRoomUrl(opts.relay, doc);
 
