@@ -1,9 +1,18 @@
 import type * as Party from "partykit/server";
 
+export function validatePush(
+  roomToken: string | undefined,
+  msgToken: string | undefined
+): boolean {
+  if (!roomToken) return true;
+  return !!msgToken && roomToken === msgToken;
+}
+
 export default class LivedownRoom implements Party.Server {
   latestContent = "";
   latestMeta: Record<string, string> = {};
   guestCounter = 0;
+  editToken: string | undefined = undefined;
 
   constructor(readonly room: Party.Room) {}
 
@@ -18,6 +27,7 @@ export default class LivedownRoom implements Party.Server {
         content: this.latestContent,
         meta: this.latestMeta,
         guestId: this.guestCounter,
+        protected: !!this.editToken,
       })
     );
   }
@@ -25,7 +35,21 @@ export default class LivedownRoom implements Party.Server {
   onMessage(message: string, sender: Party.Connection) {
     try {
       const msg = JSON.parse(message);
+
+      if (msg.type === "set-token" && !this.editToken && msg.editToken) {
+        this.editToken = msg.editToken;
+        this.room.broadcast(
+          JSON.stringify({ type: "protected", protected: true })
+        );
+        return;
+      }
+
       if (msg.type !== "push") return;
+
+      if (!validatePush(this.editToken, msg.editToken)) {
+        sender.send(JSON.stringify({ type: "auth-error" }));
+        return;
+      }
 
       this.latestContent = msg.content;
       this.latestMeta = msg.meta || {};
