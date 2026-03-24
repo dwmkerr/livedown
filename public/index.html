@@ -163,9 +163,59 @@
                                  color: #6a737d; margin: 0 0 1em; }
     #preview-inner a { color: #0366d6; }
     #preview-inner hr { border: none; border-top: 1px solid #e1e4e8; margin: 1.5em 0; }
+
+    /* ── Landing page ─────────────────────────────────────── */
+    #landing {
+      display: none; height: 100vh;
+      background: #1e1e2e; color: #cdd6f4;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    }
+    #landing-inner {
+      max-width: 520px; margin: 0 auto; padding: 12vh 2rem 4rem;
+    }
+    #landing h1 { font-size: 2em; margin: 0 0 .3em; color: #89b4fa; }
+    #landing p { line-height: 1.7; margin: 0 0 1.2em; color: #a6adc8; }
+    #landing code {
+      background: #313244; padding: .2em .5em; border-radius: 4px;
+      font-family: 'SFMono-Regular', Consolas, monospace; font-size: .9em;
+      color: #a6e3a1;
+    }
+    #landing pre {
+      background: #313244; padding: 1rem 1.2rem; border-radius: 6px;
+      overflow-x: auto; margin: 0 0 1.2em; line-height: 1.6;
+    }
+    #landing pre code { background: none; padding: 0; }
+    #landing .dim { color: #6c7086; }
+
+    /* ── Loading overlay ──────────────────────────────────── */
+    #loading {
+      display: none; position: absolute; inset: 0; z-index: 50;
+      background: #1e1e2e;
+      justify-content: center; align-items: center;
+      flex-direction: column; gap: 12px;
+      color: #6c7086; font-size: 13px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    }
+    #loading.active { display: flex; }
+    .spinner {
+      width: 24px; height: 24px; border: 2px solid #313244;
+      border-top-color: #89b4fa; border-radius: 50%;
+      animation: spin .8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
   </style>
 </head>
 <body>
+
+<div id="landing">
+  <div id="landing-inner">
+    <h1>livedown</h1>
+    <p>Edit markdown locally, share it live in a browser.</p>
+    <pre><code>npx @dwmkerr/livedown share ./your-file.md</code></pre>
+    <p>This starts watching your file and prints a link. Share the link — anyone with it sees your edits in real time.</p>
+    <p class="dim">Or if someone shared a link with you, add <code>#doc-name</code> to this URL.</p>
+  </div>
+</div>
 
 <div id="statusbar">
   <div class="sb-seg">
@@ -214,6 +264,10 @@
 
 <div id="panes">
   <div id="pane-source">
+    <div id="loading" class="active">
+      <div class="spinner"></div>
+      <span>Connecting...</span>
+    </div>
     <textarea id="cm-source"></textarea>
   </div>
   <div id="divider"></div>
@@ -224,7 +278,17 @@
 
 <script>
 (function () {
-  const docName  = location.hash.replace(/^#/, '') || 'doc';
+  // No hash — show landing page
+  if (!location.hash || location.hash === '#') {
+    document.getElementById('landing').style.display = 'block';
+    document.getElementById('statusbar').style.display = 'none';
+    document.getElementById('panes').style.display = 'none';
+    document.getElementById('edits-popover').style.display = 'none';
+    document.title = 'livedown';
+    return;
+  }
+
+  const docName  = location.hash.replace(/^#/, '');
   document.getElementById('sb-file').textContent = docName + '.md';
   document.title = docName + ' · livedown';
 
@@ -410,7 +474,11 @@
   function connect() {
     ws = new WebSocket(url);
 
-    ws.onopen = () => { setStatus('live'); reconnectDelay = 1000; };
+    ws.onopen = () => {
+      setStatus('live');
+      reconnectDelay = 1000;
+      document.getElementById('loading').classList.remove('active');
+    };
 
     ws.onmessage = (e) => {
       const msg = JSON.parse(e.data);
