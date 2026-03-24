@@ -25,7 +25,11 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm run build
-      - run: npm test
+      - run: npm run test:cov
+      - uses: codecov/codecov-action@v4
+        if: matrix.node-version == '22.x'
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
 
   release:
     needs: [validate]
