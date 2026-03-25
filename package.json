@@ -1,7 +1,7 @@
 {
   "name": "@dwmkerr/livedown",
-  "version": "0.1.1",
-  "description": "Edit markdown locally, share it live in a browser.",
+  "version": "0.1.2",
+  "description": "Share a local markdown file and collaborate live in a browser and across machines.",
   "type": "commonjs",
   "main": "./dist/cli.js",
   "bin": {
@@ -45,10 +45,13 @@
   },
   "dependencies": {
     "@inquirer/prompts": "^8.3.2",
+    "@noble/curves": "^2.0.1",
     "chokidar": "^4.0.0",
+    "clipboardy": "^5.3.1",
     "commander": "^11.1.0",
     "gray-matter": "^4.0.3",
     "open": "^11.0.0",
+    "tweetnacl": "^1.0.3",
     "ws": "^8.19.0"
   },
   "devDependencies": {

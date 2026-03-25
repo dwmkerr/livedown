@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>livedown</title>
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/tweetnacl@1.0.3/nacl-fast.min.js"></script>
   <link  rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.17/codemirror.min.css">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.17/codemirror.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.17/mode/markdown/markdown.min.js"></script>
@@ -100,6 +101,14 @@
       flex-shrink: 0;
     }
     #profile-name { font-weight: 500; }
+    #profile-access {
+      font-size: 10px; color: #f38ba8; font-weight: 500;
+    }
+    #profile-access a {
+      color: #89b4fa; text-decoration: none; cursor: pointer;
+    }
+    #profile-access a:hover { text-decoration: underline; }
+    #profile-access.editor { color: #a6e3a1; }
 
     /* ── Split panes ────────────────────────────────────────── */
     #panes { display: flex; height: calc(100vh - 32px); }
@@ -209,6 +218,46 @@
       color: #f38ba8; font-size: .9em; line-height: 1.5;
     }
     #landing-error.visible { display: block; }
+
+    /* ── Edit-token modal ────────────────────────────────────── */
+    #token-modal {
+      display: none; position: fixed; inset: 0; z-index: 200;
+      background: rgba(0,0,0,.55);
+      justify-content: center; align-items: center;
+    }
+    #token-modal.open { display: flex; }
+    #token-box {
+      background: #1e1e2e; border: 1px solid #313244; border-radius: 8px;
+      padding: 1.5rem; width: 340px; text-align: center;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      color: #cdd6f4;
+    }
+    #token-box h3 { margin: 0 0 .5rem; font-size: 1.1em; }
+    #token-box p { margin: 0 0 1rem; font-size: .85em; color: #a6adc8; }
+    #token-input {
+      width: 100%; padding: .5rem; border: 1px solid #313244;
+      border-radius: 4px; background: #313244; color: #cdd6f4;
+      font-family: 'SFMono-Regular', Consolas, monospace; font-size: .9em;
+      text-align: center; outline: none;
+    }
+    #token-input:focus { border-color: #89b4fa; }
+    #token-input.error { border-color: #f38ba8; }
+    #token-submit {
+      margin-top: .8rem; padding: .45rem 1.5rem;
+      background: #89b4fa; color: #1e1e2e; border: none; border-radius: 4px;
+      font-weight: 600; cursor: pointer; font-size: .9em;
+    }
+    #token-submit:hover { background: #74c7ec; }
+    #token-cancel {
+      margin-top: .5rem; padding: .3rem 1rem;
+      background: none; color: #6c7086; border: none; cursor: pointer;
+      font-size: .8em;
+    }
+    #token-cancel:hover { color: #cdd6f4; }
+    #token-error-msg {
+      color: #f38ba8; font-size: .8em; margin-top: .5rem;
+      display: none;
+    }
   </style>
 </head>
 <body>
@@ -217,7 +266,7 @@
   <div id="landing-inner">
     <div id="landing-error"></div>
     <h1>livedown</h1>
-    <p>Edit markdown locally, share it live in a browser.</p>
+    <p>Share a local markdown file and collaborate live in a browser and across machines.</p>
     <pre><code>npx @dwmkerr/livedown share ./your-file.md</code></pre>
     <p>Your file will be live at <code>livedown.dwmkerr.partykit.dev/#...</code></p>
     <p class="dim" style="margin-top:2em">
@@ -228,6 +277,10 @@
 </div>
 
 <div id="statusbar">
+  <a class="sb-seg" href="https://github.com/dwmkerr/livedown" target="_blank" style="text-decoration:none;gap:4px">
+    <span style="font-weight:700;color:#89b4fa">livedown</span>
+    <span id="sb-version" style="color:#6c7086;font-size:10px"></span>
+  </a>
   <div class="sb-seg">
     <span style="opacity:.5">📄</span>
     <span id="sb-file">—</span>
@@ -266,6 +319,7 @@
   <div id="profile">
     <div id="profile-avatar">?</div>
     <span id="profile-name">connecting…</span>
+    <span id="profile-access"></span>
   </div>
   <div class="sb-seg" id="sb-status">
     <div id="sb-dot"></div>
@@ -274,6 +328,19 @@
 </div>
 
 <div id="edits-popover"></div>
+
+<div id="token-modal">
+  <div id="token-box">
+    <h3>Edit key required</h3>
+    <p>This document is protected. Enter the edit key to make changes.</p>
+    <input id="token-input" type="text" placeholder="Paste edit key" autocomplete="off" spellcheck="false">
+    <div id="token-error-msg">Incorrect edit key. Try again.</div>
+    <br>
+    <button id="token-submit">Unlock editing</button>
+    <br>
+    <button id="token-cancel">View only</button>
+  </div>
+</div>
 
 <div id="panes">
   <div id="pane-source">
@@ -291,6 +358,15 @@
 
 <script>
 (function () {
+  // Fetch version from npm registry
+  fetch('https://registry.npmjs.org/@dwmkerr/livedown/latest')
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      var el = document.getElementById('sb-version');
+      if (el && d.version) el.textContent = 'v' + d.version;
+    })
+    .catch(function() {});
+
   function showLanding(errorMsg) {
     document.getElementById('landing').style.display = 'block';
     document.getElementById('statusbar').style.display = 'none';
@@ -338,6 +414,39 @@
   let myGuestId   = null;
   let myGuestName = null;
   let myColor     = null;
+  let editKey = null;      // private key seed (hex) — entered by user
+  let secretKey = null;    // full 64-byte nacl secret key
+  let roomPublicKey = null; // public key from relay (hex)
+  let isProtected = false;
+  let editUnlocked = false;
+
+  // Hex conversion helpers for tweetnacl
+  function hexToBytes(hex) {
+    var bytes = new Uint8Array(hex.length / 2);
+    for (var i = 0; i < hex.length; i += 2) {
+      bytes[i / 2] = parseInt(hex.substring(i, i + 2), 16);
+    }
+    return bytes;
+  }
+  function bytesToHex(bytes) {
+    return Array.from(bytes).map(function(b) {
+      return b.toString(16).padStart(2, '0');
+    }).join('');
+  }
+  function signContent(content, sk) {
+    var msg = new TextEncoder().encode(content);
+    var sig = nacl.sign.detached(msg, sk);
+    return bytesToHex(sig);
+  }
+  function verifyContent(content, sigHex, pubHex) {
+    try {
+      var msg = new TextEncoder().encode(content);
+      var sig = hexToBytes(sigHex);
+      var pub = hexToBytes(pubHex);
+      return nacl.sign.detached.verify(msg, sig, pub);
+    } catch (e) { return false; }
+  }
+
 
   function setProfile(guestId) {
     myGuestId   = guestId;
@@ -348,6 +457,27 @@
     av.textContent  = 'G' + guestId;
     av.style.background = myColor;
     nm.textContent  = myGuestName;
+  }
+
+  function updateProfileAccess() {
+    var el = document.getElementById('profile-access');
+    if (!isProtected) {
+      el.textContent = '';
+      el.className = '';
+      return;
+    }
+    if (editUnlocked) {
+      el.textContent = '(Editor)';
+      el.className = 'editor';
+      el.onclick = null;
+      el.innerHTML = '<span style="color:#a6e3a1">(Editor)</span>';
+    } else {
+      el.innerHTML = '(Read Only \u2014 <a id="profile-unlock">Enter Edit Key</a>)';
+      document.getElementById('profile-unlock').addEventListener('click', function (e) {
+        e.preventDefault();
+        showTokenModal();
+      });
+    }
   }
 
   // ── CodeMirror ───────────────────────────────────────────────
@@ -364,10 +494,17 @@
   let lastLocalEdit = 0;
   let pushTimer     = null;
 
+  cm.on('beforeChange', (instance, changeObj) => {
+    if (changeObj.origin === 'setValue') return;
+    if (isProtected && !editUnlocked) {
+      changeObj.cancel();
+      showTokenModal();
+    }
+  });
+
   cm.on('change', (instance, changeObj) => {
-    if (changeObj.origin === 'setValue') return; // ignore programmatic updates
+    if (changeObj.origin === 'setValue') return;
     lastLocalEdit = Date.now();
-    // Debounce: push 400ms after last keystroke
     clearTimeout(pushTimer);
     pushTimer = setTimeout(() => push(cm.getValue()), 400);
   });
@@ -444,6 +581,57 @@
     return d.innerHTML;
   }
 
+  // ── Edit token modal ─────────────────────────────────────────
+  const tokenModal  = document.getElementById('token-modal');
+  const tokenInput  = document.getElementById('token-input');
+  const tokenSubmit = document.getElementById('token-submit');
+  const tokenCancel = document.getElementById('token-cancel');
+  const tokenError  = document.getElementById('token-error-msg');
+
+  function showTokenModal() {
+    tokenModal.classList.add('open');
+    tokenInput.value = '';
+    tokenInput.classList.remove('error');
+    tokenError.style.display = 'none';
+    tokenInput.focus();
+  }
+
+  function hideTokenModal() {
+    tokenModal.classList.remove('open');
+  }
+
+  tokenSubmit.addEventListener('click', function () {
+    var val = tokenInput.value.trim();
+    if (!val) { tokenInput.classList.add('error'); return; }
+    try {
+      var seed = hexToBytes(val);
+      if (seed.length !== 32) throw new Error('bad length');
+      var kp = nacl.sign.keyPair.fromSeed(seed);
+      // Verify it matches the room's public key
+      if (roomPublicKey && bytesToHex(kp.publicKey) !== roomPublicKey) {
+        tokenInput.classList.add('error');
+        tokenError.style.display = 'block';
+        return;
+      }
+      editKey = val;
+      secretKey = kp.secretKey;
+      editUnlocked = true;
+      updateProfileAccess();
+      hideTokenModal();
+    } catch (e) {
+      tokenInput.classList.add('error');
+      tokenError.style.display = 'block';
+    }
+  });
+
+  tokenInput.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') tokenSubmit.click();
+  });
+
+  tokenCancel.addEventListener('click', function () {
+    hideTokenModal();
+  });
+
   editsSeg.addEventListener('click', function (e) {
     e.stopPropagation();
     editsPopover.classList.toggle('open');
@@ -479,9 +667,11 @@
 
   function push(content) {
     if (!ws || ws.readyState !== 1) return;
+    var signature = secretKey ? signContent(content, secretKey) : null;
     ws.send(JSON.stringify({
       type: 'push',
       content,
+      signature: signature,
       meta: {
         editor:   myGuestName,
         editedAt: new Date().toISOString(),
@@ -515,6 +705,9 @@
           renderPreview(msg.content);
         }
         setMeta(msg.meta);
+        isProtected = !!msg.protected;
+        if (msg.publicKey) roomPublicKey = msg.publicKey;
+        updateProfileAccess();
         setLastEdit(msg.meta?.editor, msg.meta?.editedAt);
         if (msg.meta?.editor) recordEdit(msg.meta.editor, msg.meta.editedAt, msg.content);
         return;
@@ -522,6 +715,7 @@
 
       if (msg.type === 'update') {
         gotContent = true;
+
         setMeta(msg.meta);
         setLastEdit(msg.meta?.editor, msg.meta?.editedAt);
         recordEdit(msg.meta?.editor, msg.meta?.editedAt, msg.content);
@@ -533,6 +727,23 @@
         } else {
           flashRemoteEdit();
         }
+      }
+
+      if (msg.type === 'auth-error') {
+        editUnlocked = false;
+        editKey = null;
+        secretKey = null;
+        updateProfileAccess();
+        showTokenModal();
+        tokenInput.classList.add('error');
+        tokenError.style.display = 'block';
+        return;
+      }
+
+      if (msg.type === 'protected') {
+        isProtected = !!msg.protected;
+        if (msg.publicKey) roomPublicKey = msg.publicKey;
+        updateProfileAccess();
       }
     };
 
