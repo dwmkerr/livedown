@@ -1,0 +1,50 @@
+name: security-review
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, labeled]
+
+jobs:
+  security-review:
+    runs-on: ubuntu-latest
+    if: contains(github.event.pull_request.labels.*.name, 'autorelease: pending')
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get changed files
+        id: changes
+        run: |
+          FILES=$(gh pr diff ${{ github.event.pull_request.number }} --name-only | grep -E '\.(ts|js|html|json)$' || true)
+          echo "files<<EOF" >> "$GITHUB_OUTPUT"
+          echo "$FILES" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+          if [ -z "$FILES" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Run security review
+        if: steps.changes.outputs.skip == 'false'
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          direct_prompt: |
+            You are the livedown security agent. Read .claude/agents/security.md for your full instructions and security principles.
+
+            This is a release PR. Review ALL changed source files for security issues.
+
+            Changed files:
+            ${{ steps.changes.outputs.files }}
+
+            Read each changed file and evaluate against the security principles and attack surfaces defined in .claude/agents/security.md. Post your findings as a structured report. If there are no issues, confirm the release is safe.
+
+            Focus on: file system write-back, signature verification, XSS, credential handling, and the four security principles (URLs not credentials, defense in depth, no broadcast secrets, no custom crypto).
