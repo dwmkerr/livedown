@@ -65,6 +65,29 @@ async function startSharing(
   }
 
   startWatcher(filePath, doc, roomUrl, opts.editor, editToken);
+
+  if (process.stdin.isTTY) {
+    const dim = "\x1b[2m";
+    const reset = "\x1b[0m";
+    console.log(`${dim}  t copy edit key  q quit${reset}\n`);
+    process.stdin.setRawMode(true);
+    process.stdin.resume();
+    process.stdin.on("data", async (key: Buffer) => {
+      const ch = key.toString();
+      if (ch === "q" || ch === "\u0003") {
+        process.exit(0);
+      }
+      if (ch === "t") {
+        try {
+          const { default: clipboardy } = await import("clipboardy");
+          await clipboardy.write(editToken);
+          console.log("  \x1b[32m✓ Edit key copied to clipboard\x1b[0m");
+        } catch {
+          console.log("  \x1b[31m✗ Could not copy to clipboard\x1b[0m");
+        }
+      }
+    });
+  }
 }
 
 const defaultRelay = process.env.PARTYKIT_HOST || DEFAULT_RELAY;
