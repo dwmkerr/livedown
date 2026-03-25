@@ -48,6 +48,10 @@ export default class LivedownRoom implements Party.Server {
 
       if (!validatePush(this.editToken, msg.editToken)) {
         sender.send(JSON.stringify({ type: "auth-error" }));
+        const editor = msg.meta?.editor || "unknown";
+        this.room.broadcast(JSON.stringify({ type: "auth-rejected", editor }), [
+          sender.id,
+        ]);
         return;
       }
 

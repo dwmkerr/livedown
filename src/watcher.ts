@@ -76,6 +76,11 @@ export function startWatcher(
           );
           return;
         }
+        if (msg.type === "auth-rejected") {
+          const who = msg.editor || "unknown";
+          console.log(`  \x1b[31m✗ ${who} — edit rejected (bad token)\x1b[0m`);
+          return;
+        }
         if (msg.type !== "update") return;
 
         const meta = msg.meta || {};
