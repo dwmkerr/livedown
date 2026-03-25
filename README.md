@@ -3,7 +3,7 @@ title: "README"
 ---
 <p align="center">
   <h2 align="center"><code>📝 livedown</code></h2>
-  <h3 align="center">Edit markdown locally, share it live in a browser.</h3>
+  <h3 align="center">Share a local markdown file and collaborate live in a browser and across machines.</h3>
   <p align="center">
     <a href="#quickstart">Quickstart</a> |
     <a href="#how-it-works">How It Works</a> |

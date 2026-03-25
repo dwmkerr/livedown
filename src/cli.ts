@@ -60,7 +60,9 @@ const program = new Command();
 
 program
   .name("livedown")
-  .description("Edit markdown locally, share it live in a browser.")
+  .description(
+    "Share a local markdown file and collaborate live in a browser and across machines."
+  )
   .version(pkg.version);
 
 program
