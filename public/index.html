@@ -100,6 +100,14 @@
       flex-shrink: 0;
     }
     #profile-name { font-weight: 500; }
+    #profile-access {
+      font-size: 10px; color: #f38ba8; font-weight: 500;
+    }
+    #profile-access a {
+      color: #89b4fa; text-decoration: none; cursor: pointer;
+    }
+    #profile-access a:hover { text-decoration: underline; }
+    #profile-access.editor { color: #a6e3a1; }
 
     /* ── Split panes ────────────────────────────────────────── */
     #panes { display: flex; height: calc(100vh - 32px); }
@@ -306,6 +314,7 @@
   <div id="profile">
     <div id="profile-avatar">?</div>
     <span id="profile-name">connecting…</span>
+    <span id="profile-access"></span>
   </div>
   <div class="sb-seg" id="sb-status">
     <div id="sb-dot"></div>
@@ -405,6 +414,27 @@
     av.textContent  = 'G' + guestId;
     av.style.background = myColor;
     nm.textContent  = myGuestName;
+  }
+
+  function updateProfileAccess() {
+    var el = document.getElementById('profile-access');
+    if (!isProtected) {
+      el.textContent = '';
+      el.className = '';
+      return;
+    }
+    if (editUnlocked) {
+      el.textContent = '(Editor)';
+      el.className = 'editor';
+      el.onclick = null;
+      el.innerHTML = '<span style="color:#a6e3a1">(Editor)</span>';
+    } else {
+      el.innerHTML = '(Read Only \u2014 <a id="profile-unlock">Enter Edit Key</a>)';
+      document.getElementById('profile-unlock').addEventListener('click', function (e) {
+        e.preventDefault();
+        showTokenModal();
+      });
+    }
   }
 
   // ── CodeMirror ───────────────────────────────────────────────
@@ -532,7 +562,7 @@
     if (!val) { tokenInput.classList.add('error'); return; }
     editToken = val;
     editUnlocked = true;
-    cm.setOption('readOnly', false);
+    updateProfileAccess();
     hideTokenModal();
   });
 
@@ -617,10 +647,7 @@
         }
         setMeta(msg.meta);
         isProtected = !!msg.protected;
-
-        if (isProtected && !editUnlocked) {
-          cm.setOption('readOnly', true);
-        }
+        updateProfileAccess();
         setLastEdit(msg.meta?.editor, msg.meta?.editedAt);
         if (msg.meta?.editor) recordEdit(msg.meta.editor, msg.meta.editedAt, msg.content);
         return;
@@ -645,7 +672,7 @@
       if (msg.type === 'auth-error') {
         editUnlocked = false;
         editToken = null;
-        cm.setOption('readOnly', true);
+        updateProfileAccess();
         showTokenModal();
         tokenInput.classList.add('error');
         tokenError.style.display = 'block';
@@ -654,9 +681,7 @@
 
       if (msg.type === 'protected') {
         isProtected = !!msg.protected;
-        if (isProtected && !editUnlocked) {
-          cm.setOption('readOnly', true);
-        }
+        updateProfileAccess();
       }
     };
 

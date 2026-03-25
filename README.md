@@ -1,6 +1,3 @@
----
-title: "README"
----
 <p align="center">
   <h2 align="center"><code>📝 livedown</code></h2>
   <h3 align="center">Share a local markdown file and collaborate live in a browser and across machines.</h3>
@@ -9,6 +6,9 @@ title: "README"
     <a href="#how-it-works">How It Works</a> |
     <a href="#commands">Commands</a>
   </p>
+  
+  
+  
   <p align="center">
     <a href="https://github.com/dwmkerr/livedown/actions/workflows/cicd.yaml"><img src="https://github.com/dwmkerr/livedown/actions/workflows/cicd.yaml/badge.svg" alt="cicd"></a>
     <a href="https://www.npmjs.com/package/@dwmkerr/livedown"><img src="https://img.shields.io/npm/v/%40dwmkerr/livedown" alt="npm version"></a>

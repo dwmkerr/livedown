@@ -27,10 +27,10 @@ function buildRoomUrl(relay: string, doc: string): string {
   return `${proto}://${relay}/parties/main/${encodeURIComponent(doc)}`;
 }
 
-function startSharing(
+async function startSharing(
   file: string,
   opts: { relay: string; editor: string; doc?: string; editToken?: string }
-): void {
+): Promise<void> {
   const filePath = path.resolve(file);
   if (!fs.existsSync(filePath)) {
     console.error(`Error: file not found: ${filePath}`);
@@ -48,6 +48,21 @@ function startSharing(
     `  Join      \x1b[4m\x1b]8;;${viewerUrl}\x07${viewerUrl}\x1b]8;;\x07\x1b[24m`
   );
   console.log(`  Edit key  \x1b[33m${editToken}\x1b[0m\n`);
+
+  const { confirm } = await import("@inquirer/prompts");
+  const shouldCopy = await confirm({
+    message: "Copy edit key to clipboard?",
+    default: true,
+  });
+  if (shouldCopy) {
+    try {
+      const { default: clipboardy } = await import("clipboardy");
+      await clipboardy.write(editToken);
+      console.log("  \x1b[32m✓ Edit key copied to clipboard\x1b[0m\n");
+    } catch {
+      console.log("  \x1b[31m✗ Could not copy to clipboard\x1b[0m\n");
+    }
+  }
 
   startWatcher(filePath, doc, roomUrl, opts.editor, editToken);
 }
