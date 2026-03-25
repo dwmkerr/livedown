@@ -8,28 +8,17 @@ function fromHex(hex: string): Uint8Array {
   return bytes;
 }
 
-export async function verifySignature(
+async function verifySignature(
   content: string,
   signatureHex: string,
   publicKeyHex: string
 ): Promise<boolean> {
   try {
-    const msg = new Uint8Array(new TextEncoder().encode(content));
-    const sig = new Uint8Array(fromHex(signatureHex));
-    const pub = new Uint8Array(fromHex(publicKeyHex));
-    const key = await crypto.subtle.importKey(
-      "raw",
-      pub,
-      { name: "Ed25519" } as EcKeyImportParams,
-      false,
-      ["verify"]
-    );
-    return await crypto.subtle.verify(
-      { name: "Ed25519" } as EcdsaParams,
-      key,
-      sig,
-      msg
-    );
+    const { ed25519 } = await import("@noble/curves/ed25519.js");
+    const msg = new TextEncoder().encode(content);
+    const sig = fromHex(signatureHex);
+    const pub = fromHex(publicKeyHex);
+    return ed25519.verify(sig, msg, pub);
   } catch {
     return false;
   }

@@ -1,8 +1,9 @@
 import { generateEditKeyPair, signContent, verifySignature } from "../token";
 
-// Relay uses Web Crypto API (not available in Jest/Node).
-// Test the signing/verification logic via the token module instead,
-// which uses tweetnacl (same Ed25519 algorithm, compatible signatures).
+// The relay uses @noble/curves for Ed25519 verification, which can't be
+// imported in Jest due to ESM/BigInt transpilation issues. Instead we test
+// the cross-library compatibility via tweetnacl (token.ts), since both
+// implement standard Ed25519 (RFC 8032) and produce identical signatures.
 describe("Ed25519 signature verification", () => {
   it("should verify a valid signature", () => {
     const kp = generateEditKeyPair();
