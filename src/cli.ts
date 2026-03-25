@@ -67,9 +67,6 @@ async function startSharing(
   startWatcher(filePath, doc, roomUrl, opts.editor, editToken);
 
   if (process.stdin.isTTY) {
-    const dim = "\x1b[2m";
-    const reset = "\x1b[0m";
-    console.log(`${dim}  t copy edit key  q quit${reset}\n`);
     process.stdin.setRawMode(true);
     process.stdin.resume();
     process.stdin.on("data", async (key: Buffer) => {
@@ -81,9 +78,15 @@ async function startSharing(
         try {
           const { default: clipboardy } = await import("clipboardy");
           await clipboardy.write(editToken);
-          console.log("  \x1b[32m✓ Edit key copied to clipboard\x1b[0m");
+          console.log(
+            "\x1b[2K\r  \x1b[32m✓ Edit key copied to clipboard\x1b[0m"
+          );
+          process.stdout.write("\x1b[2m  t copy edit key  q quit\x1b[0m");
         } catch {
-          console.log("  \x1b[31m✗ Could not copy to clipboard\x1b[0m");
+          console.log(
+            "\x1b[2K\r  \x1b[31m✗ Could not copy to clipboard\x1b[0m"
+          );
+          process.stdout.write("\x1b[2m  t copy edit key  q quit\x1b[0m");
         }
       }
     });
