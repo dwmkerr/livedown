@@ -67,6 +67,18 @@ Livedown has three components:
 
 3. **Browser Viewer** (`public/index.html`) — renders the shared markdown with live preview and a CodeMirror editor. Viewers can read freely; editing requires the edit key.
 
+### Key Libraries
+
+| Library | Used In | Purpose |
+|---------|---------|---------|
+| [tweetnacl](https://github.com/nickolay/nickolay/tweetnacl-js) | CLI, watcher, browser (CDN) | Ed25519 signing and verification |
+| [@noble/curves](https://github.com/paulmillr/noble-curves) | Relay | Ed25519 verification (pure ESM, Cloudflare Workers compatible) |
+| [PartyKit](https://partykit.io) | Relay | WebSocket relay infrastructure on Cloudflare Workers |
+| [CodeMirror](https://codemirror.net) | Browser | Markdown editor |
+| [marked](https://marked.js.org) | Browser | Markdown to HTML rendering |
+| [chokidar](https://github.com/paulmillr/chokidar) | Watcher | File system change detection |
+| [commander](https://github.com/tj/commander.js) | CLI | Command-line argument parsing |
+
 ### Security
 
 Livedown uses **Ed25519 asymmetric signing** to protect the sharer's local files from unauthorized edits.
@@ -88,9 +100,9 @@ This means even a compromised relay cannot forge updates that the local watcher 
 
 ### PartyKit and Cloudflare Workers
 
-The relay runs on [PartyKit](https://partykit.io), which deploys to [Cloudflare Workers](https://workers.cloudflare.com). The relay uses the Web Crypto API (`crypto.subtle.verify` with Ed25519) for signature verification — no external dependencies in the deployed bundle.
+The relay runs on [PartyKit](https://partykit.io), which deploys to [Cloudflare Workers](https://workers.cloudflare.com). The relay uses [@noble/curves](https://github.com/paulmillr/noble-curves) for Ed25519 signature verification — a pure ESM library with no Node.js dependencies that bundles cleanly in Cloudflare's esbuild pipeline.
 
-The CLI and browser use [tweetnacl](https://github.com/nickolay/nickolay/tweetnacl-js) for Ed25519 operations. Both implementations use the same Ed25519 curve and produce compatible signatures.
+The CLI and browser use [tweetnacl](https://github.com/nickolay/nickolay/tweetnacl-js) for Ed25519 operations. Both libraries implement RFC 8032 Ed25519 and produce compatible signatures.
 
 Rooms are ephemeral — they exist only while connections are active and have no persistent storage. The public key is held in memory for the room's lifetime and must be re-registered on each sharing session.
 

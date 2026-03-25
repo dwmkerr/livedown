@@ -40,6 +40,20 @@ If a credential is included in a broadcast message, every recipient has it. Shar
 
 **Correct approach**: using asymmetric signing (Ed25519). The public key is broadcast freely for verification. The private key (edit key) is only held by authorized editors. Viewers can verify authenticity but cannot forge.
 
+### 4. Never implement cryptographic code — use verified libraries
+
+Cryptographic operations must use established, audited libraries. Never write custom implementations of signing, hashing, key derivation, or encryption — even for "simple" operations.
+
+**Bad example**: extracting Ed25519 verify functions from a library into a standalone file, or implementing hex-to-bytes conversion with custom math for cryptographic contexts.
+
+**Correct approach**: import a verified library (`tweetnacl`, `@noble/curves`, etc.) and use its public API directly. If a library doesn't work in a specific environment (e.g., bundler incompatibility), use a different verified library — do not extract or rewrite the code.
+
+The current approved cryptographic libraries for livedown are:
+- **tweetnacl** — Ed25519 signing/verification in Node.js (CLI, watcher) and browser (CDN)
+- **@noble/curves** — Ed25519 verification in the relay (Cloudflare Workers compatible, pure ESM)
+
+Both implement RFC 8032 Ed25519 and produce compatible signatures. Any change to cryptographic libraries must be flagged as a principle violation if it introduces custom implementations.
+
 ## Key Attack Surfaces
 
 This project has several high-risk attack surfaces you MUST examine:
