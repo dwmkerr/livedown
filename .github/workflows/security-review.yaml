@@ -1,21 +1,28 @@
 name: security-review
 
 on:
-  pull_request:
+  pull_request_target:
     branches: [main]
     types: [opened, synchronize, labeled]
 
 jobs:
   security-review:
     runs-on: ubuntu-latest
-    if: contains(github.event.pull_request.labels.*.name, 'autorelease: pending')
+    # Only runs on release-please branches — bot-generated, can't be pushed
+    # to by external contributors. The label check is a secondary guard.
+    if: >
+      startsWith(github.head_ref, 'release-please--')
+      && contains(github.event.pull_request.labels.*.name, 'autorelease: pending')
     permissions:
       contents: read
       pull-requests: write
     steps:
+      # Checkout from BASE (main), not the PR branch. This ensures the
+      # workflow, agent definition, and prompt all come from trusted code.
+      # We only read the PR diff via gh cli — never checkout PR code.
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          ref: ${{ github.event.pull_request.base.sha }}
 
       - name: Get changed files
         id: changes
@@ -32,19 +39,36 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
 
+      - name: Get PR diff
+        if: steps.changes.outputs.skip == 'false'
+        id: diff
+        run: |
+          DIFF=$(gh pr diff ${{ github.event.pull_request.number }})
+          echo "diff<<DIFFEOF" >> "$GITHUB_OUTPUT"
+          echo "$DIFF" >> "$GITHUB_OUTPUT"
+          echo "DIFFEOF" >> "$GITHUB_OUTPUT"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
       - name: Run security review
         if: steps.changes.outputs.skip == 'false'
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          # allowed_tools restricts Claude to read-only — no bash, no writes
+          allowed_tools: "Read,Glob,Grep"
           direct_prompt: |
             You are the livedown security agent. Read .claude/agents/security.md for your full instructions and security principles.
 
-            This is a release PR. Review ALL changed source files for security issues.
+            This is a release PR. Review the diff below for security issues.
 
             Changed files:
             ${{ steps.changes.outputs.files }}
 
-            Read each changed file and evaluate against the security principles and attack surfaces defined in .claude/agents/security.md. Post your findings as a structured report. If there are no issues, confirm the release is safe.
+            Read each changed file in the CURRENT codebase (checked out from main) and review the diff to evaluate changes against the security principles and attack surfaces defined in .claude/agents/security.md.
+
+            Post your findings as a structured report. If there are no issues, confirm the release is safe.
+
+            IMPORTANT: You are reviewing code for security. Do not execute any code, do not run any commands, do not access any URLs. Only read files and analyze.
 
             Focus on: file system write-back, signature verification, XSS, credential handling, and the four security principles (URLs not credentials, defense in depth, no broadcast secrets, no custom crypto).
