@@ -3,6 +3,7 @@ import path from "path";
 import chokidar from "chokidar";
 import matter from "gray-matter";
 import WebSocket from "ws";
+import { signContent, verifySignature } from "./token";
 
 interface Meta {
   owner: string | null;
@@ -30,22 +31,40 @@ function parseMeta(
   };
 }
 
+const HINTS = "\x1b[2m  t copy edit key  q quit\x1b[0m";
+let showHints = false;
+
+function log(msg: string): void {
+  if (showHints && process.stdout.isTTY) {
+    process.stdout.write("\x1b[2K\r");
+    console.log(msg);
+    process.stdout.write(HINTS);
+  } else {
+    console.log(msg);
+  }
+}
+
 export function startWatcher(
   filePath: string,
   doc: string,
   roomUrl: string,
-  editor: string
+  editor: string,
+  editKey: string,
+  publicKey: string
 ): void {
   let ws: WebSocket | null = null;
   let ignoreNextWrite = false;
+  showHints = process.stdin.isTTY === true;
 
   function push(raw: string): void {
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
     const { content, meta } = parseMeta(raw, filePath);
+    const signature = signContent(content, editKey);
     ws.send(
       JSON.stringify({
         type: "push",
         content,
+        signature,
         meta: {
           ...meta,
           editor,
@@ -60,14 +79,35 @@ export function startWatcher(
     ws = new WebSocket(roomUrl);
 
     ws.on("open", () => {
-      console.log("Connected to room");
+      log("Connected to room");
+      if (showHints && process.stdout.isTTY) {
+        process.stdout.write(HINTS);
+      }
+      ws!.send(JSON.stringify({ type: "set-token", publicKey }));
       push(fs.readFileSync(filePath, "utf8"));
     });
 
     ws.on("message", (data: WebSocket.Data) => {
       try {
         const msg = JSON.parse(data.toString());
+        if (msg.type === "auth-error") {
+          log("Edit key rejected — check your --edit-key value");
+          return;
+        }
+        if (msg.type === "auth-rejected") {
+          const who = msg.editor || "unknown";
+          log(`  \x1b[31m✗ ${who} — edit rejected (bad signature)\x1b[0m`);
+          return;
+        }
         if (msg.type !== "update") return;
+
+        // Verify signature before writing to disk
+        if (msg.signature && publicKey) {
+          if (!verifySignature(msg.content || "", msg.signature, publicKey)) {
+            log("  \x1b[31m✗ Rejected update — invalid signature\x1b[0m");
+            return;
+          }
+        }
 
         const meta = msg.meta || {};
         let frontmatter = "";
@@ -95,7 +135,7 @@ export function startWatcher(
             .slice(0, 60);
           const dim = "\x1b[2m";
           const reset = "\x1b[0m";
-          console.log(
+          log(
             `  ${dim}${who}${reset}  ${preview}${preview.length >= 60 ? "..." : ""}`
           );
         }
@@ -105,11 +145,11 @@ export function startWatcher(
     });
 
     ws.on("close", () => {
-      console.log("Disconnected — reconnecting in 2s...");
+      log("Disconnected — reconnecting in 2s...");
       setTimeout(connect, 2000);
     });
 
-    ws.on("error", (e: Error) => console.error("WS error:", e.message));
+    ws.on("error", (e: Error) => log(`WS error: ${e.message}`));
   }
 
   chokidar
@@ -122,7 +162,7 @@ export function startWatcher(
         return;
       }
       const raw = fs.readFileSync(filePath, "utf8");
-      console.log("Local change detected — pushing...");
+      log("Local change detected — pushing...");
       push(raw);
     });
 

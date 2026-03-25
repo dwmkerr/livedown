@@ -6,6 +6,7 @@ import os from "os";
 import path from "path";
 import { Command } from "commander";
 import { startWatcher } from "./watcher";
+import { generateEditKeyPair, publicKeyFromEditKey } from "./token";
 
 const pkg = JSON.parse(
   fs.readFileSync(path.resolve(__dirname, "..", "package.json"), "utf8")
@@ -26,10 +27,10 @@ function buildRoomUrl(relay: string, doc: string): string {
   return `${proto}://${relay}/parties/main/${encodeURIComponent(doc)}`;
 }
 
-function startSharing(
+async function startSharing(
   file: string,
-  opts: { relay: string; editor: string; doc?: string }
-): void {
+  opts: { relay: string; editor: string; doc?: string; editKey?: string }
+): Promise<void> {
   const filePath = path.resolve(file);
   if (!fs.existsSync(filePath)) {
     console.error(`Error: file not found: ${filePath}`);
@@ -38,15 +39,67 @@ function startSharing(
 
   const filename = path.basename(filePath);
   const doc = opts.doc || `${shortId()}/${filename}`;
+  let editKey: string;
+  let publicKey: string;
+  if (opts.editKey) {
+    editKey = opts.editKey;
+    publicKey = publicKeyFromEditKey(editKey);
+  } else {
+    const kp = generateEditKeyPair();
+    editKey = kp.editKey;
+    publicKey = kp.publicKey;
+  }
   const viewerUrl = buildViewerUrl(opts.relay, doc);
   const roomUrl = buildRoomUrl(opts.relay, doc);
 
   console.log(`\n  Watching  ${filePath}`);
   console.log(
-    `  Join      \x1b[4m\x1b]8;;${viewerUrl}\x07${viewerUrl}\x1b]8;;\x07\x1b[24m\n`
+    `  Join      \x1b[4m\x1b]8;;${viewerUrl}\x07${viewerUrl}\x1b]8;;\x07\x1b[24m`
   );
+  console.log(`  Edit key  \x1b[33m${editKey}\x1b[0m\n`);
 
-  startWatcher(filePath, doc, roomUrl, opts.editor);
+  const { confirm } = await import("@inquirer/prompts");
+  const shouldCopy = await confirm({
+    message: "Copy edit key to clipboard?",
+    default: true,
+  });
+  if (shouldCopy) {
+    try {
+      const { default: clipboardy } = await import("clipboardy");
+      await clipboardy.write(editKey);
+      console.log("  \x1b[32m✓ Edit key copied to clipboard\x1b[0m\n");
+    } catch {
+      console.log("  \x1b[31m✗ Could not copy to clipboard\x1b[0m\n");
+    }
+  }
+
+  startWatcher(filePath, doc, roomUrl, opts.editor, editKey, publicKey);
+
+  if (process.stdin.isTTY) {
+    process.stdin.setRawMode(true);
+    process.stdin.resume();
+    process.stdin.on("data", async (key: Buffer) => {
+      const ch = key.toString();
+      if (ch === "q" || ch === "\u0003") {
+        process.exit(0);
+      }
+      if (ch === "t") {
+        try {
+          const { default: clipboardy } = await import("clipboardy");
+          await clipboardy.write(editKey);
+          console.log(
+            "\x1b[2K\r  \x1b[32m✓ Edit key copied to clipboard\x1b[0m"
+          );
+          process.stdout.write("\x1b[2m  t copy edit key  q quit\x1b[0m");
+        } catch {
+          console.log(
+            "\x1b[2K\r  \x1b[31m✗ Could not copy to clipboard\x1b[0m"
+          );
+          process.stdout.write("\x1b[2m  t copy edit key  q quit\x1b[0m");
+        }
+      }
+    });
+  }
 }
 
 const defaultRelay = process.env.PARTYKIT_HOST || DEFAULT_RELAY;
@@ -57,7 +110,9 @@ const program = new Command();
 
 program
   .name("livedown")
-  .description("Edit markdown locally, share it live in a browser.")
+  .description(
+    "Share a local markdown file and collaborate live in a browser and across machines."
+  )
   .version(pkg.version);
 
 program
@@ -67,6 +122,7 @@ program
   .option("-r, --relay <host>", "Relay host", defaultRelay)
   .option("-e, --editor <name>", "Your name shown to viewers", defaultEditor)
   .option("-d, --doc <name>", "Document name (defaults to filename)")
+  .option("-k, --edit-key <key>", "Edit key (auto-generated if omitted)")
   .action(startSharing);
 
 program

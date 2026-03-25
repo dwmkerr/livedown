@@ -1,0 +1,29 @@
+name: deploy
+
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: [cicd]
+    types: [completed]
+    branches: [main]
+
+env:
+  NODE_LTS_VERSION: 24.x
+
+jobs:
+  deploy-partykit:
+    runs-on: ubuntu-latest
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push')
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_LTS_VERSION }}
+          cache: "npm"
+      - run: npm ci
+      - run: npx partykit deploy
+        env:
+          PARTYKIT_TOKEN: ${{ secrets.PARTYKIT_TOKEN }}

@@ -5,3 +5,6 @@ scratch/
 *.env
 !*.env.sample
 .partykit/
+.playwright-mcp/
+coverage/
+.worktrees/
