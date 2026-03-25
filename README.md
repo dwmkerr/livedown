@@ -1,5 +1,3 @@
-testing
-
 <p align="center">
   <h2 align="center"><code>📝 livedown</code></h2>
   <h3 align="center">Share a local markdown file and collaborate live in a browser and across machines.</h3>

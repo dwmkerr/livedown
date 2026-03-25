@@ -3,6 +3,7 @@ import path from "path";
 import chokidar from "chokidar";
 import matter from "gray-matter";
 import WebSocket from "ws";
+import { signContent, verifySignature } from "./token";
 
 interface Meta {
   owner: string | null;
@@ -35,7 +36,6 @@ let showHints = false;
 
 function log(msg: string): void {
   if (showHints && process.stdout.isTTY) {
-    // Clear current line (the hints), print message, reprint hints
     process.stdout.write("\x1b[2K\r");
     console.log(msg);
     process.stdout.write(HINTS);
@@ -49,7 +49,8 @@ export function startWatcher(
   doc: string,
   roomUrl: string,
   editor: string,
-  editToken: string
+  editKey: string,
+  publicKey: string
 ): void {
   let ws: WebSocket | null = null;
   let ignoreNextWrite = false;
@@ -58,11 +59,12 @@ export function startWatcher(
   function push(raw: string): void {
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
     const { content, meta } = parseMeta(raw, filePath);
+    const signature = signContent(content, editKey);
     ws.send(
       JSON.stringify({
         type: "push",
         content,
-        editToken,
+        signature,
         meta: {
           ...meta,
           editor,
@@ -81,7 +83,7 @@ export function startWatcher(
       if (showHints && process.stdout.isTTY) {
         process.stdout.write(HINTS);
       }
-      ws!.send(JSON.stringify({ type: "set-token", editToken }));
+      ws!.send(JSON.stringify({ type: "set-token", publicKey }));
       push(fs.readFileSync(filePath, "utf8"));
     });
 
@@ -89,15 +91,23 @@ export function startWatcher(
       try {
         const msg = JSON.parse(data.toString());
         if (msg.type === "auth-error") {
-          log("Edit token rejected — check your --edit-token value");
+          log("Edit key rejected — check your --edit-key value");
           return;
         }
         if (msg.type === "auth-rejected") {
           const who = msg.editor || "unknown";
-          log(`  \x1b[31m✗ ${who} — edit rejected (bad token)\x1b[0m`);
+          log(`  \x1b[31m✗ ${who} — edit rejected (bad signature)\x1b[0m`);
           return;
         }
         if (msg.type !== "update") return;
+
+        // Verify signature before writing to disk
+        if (msg.signature && publicKey) {
+          if (!verifySignature(msg.content || "", msg.signature, publicKey)) {
+            log("  \x1b[31m✗ Rejected update — invalid signature\x1b[0m");
+            return;
+          }
+        }
 
         const meta = msg.meta || {};
         let frontmatter = "";

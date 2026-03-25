@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>livedown</title>
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/tweetnacl@1.0.3/nacl-fast.min.js"></script>
   <link  rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.17/codemirror.min.css">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.17/codemirror.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.17/mode/markdown/markdown.min.js"></script>
@@ -400,9 +401,38 @@
   let myGuestId   = null;
   let myGuestName = null;
   let myColor     = null;
-  let editToken = null;
+  let editKey = null;      // private key seed (hex) — entered by user
+  let secretKey = null;    // full 64-byte nacl secret key
+  let roomPublicKey = null; // public key from relay (hex)
   let isProtected = false;
   let editUnlocked = false;
+
+  // Hex conversion helpers for tweetnacl
+  function hexToBytes(hex) {
+    var bytes = new Uint8Array(hex.length / 2);
+    for (var i = 0; i < hex.length; i += 2) {
+      bytes[i / 2] = parseInt(hex.substring(i, i + 2), 16);
+    }
+    return bytes;
+  }
+  function bytesToHex(bytes) {
+    return Array.from(bytes).map(function(b) {
+      return b.toString(16).padStart(2, '0');
+    }).join('');
+  }
+  function signContent(content, sk) {
+    var msg = new TextEncoder().encode(content);
+    var sig = nacl.sign.detached(msg, sk);
+    return bytesToHex(sig);
+  }
+  function verifyContent(content, sigHex, pubHex) {
+    try {
+      var msg = new TextEncoder().encode(content);
+      var sig = hexToBytes(sigHex);
+      var pub = hexToBytes(pubHex);
+      return nacl.sign.detached.verify(msg, sig, pub);
+    } catch (e) { return false; }
+  }
 
 
   function setProfile(guestId) {
@@ -560,10 +590,25 @@
   tokenSubmit.addEventListener('click', function () {
     var val = tokenInput.value.trim();
     if (!val) { tokenInput.classList.add('error'); return; }
-    editToken = val;
-    editUnlocked = true;
-    updateProfileAccess();
-    hideTokenModal();
+    try {
+      var seed = hexToBytes(val);
+      if (seed.length !== 32) throw new Error('bad length');
+      var kp = nacl.sign.keyPair.fromSeed(seed);
+      // Verify it matches the room's public key
+      if (roomPublicKey && bytesToHex(kp.publicKey) !== roomPublicKey) {
+        tokenInput.classList.add('error');
+        tokenError.style.display = 'block';
+        return;
+      }
+      editKey = val;
+      secretKey = kp.secretKey;
+      editUnlocked = true;
+      updateProfileAccess();
+      hideTokenModal();
+    } catch (e) {
+      tokenInput.classList.add('error');
+      tokenError.style.display = 'block';
+    }
   });
 
   tokenInput.addEventListener('keydown', function (e) {
@@ -609,10 +654,11 @@
 
   function push(content) {
     if (!ws || ws.readyState !== 1) return;
+    var signature = secretKey ? signContent(content, secretKey) : null;
     ws.send(JSON.stringify({
       type: 'push',
       content,
-      editToken: editToken,
+      signature: signature,
       meta: {
         editor:   myGuestName,
         editedAt: new Date().toISOString(),
@@ -647,6 +693,7 @@
         }
         setMeta(msg.meta);
         isProtected = !!msg.protected;
+        if (msg.publicKey) roomPublicKey = msg.publicKey;
         updateProfileAccess();
         setLastEdit(msg.meta?.editor, msg.meta?.editedAt);
         if (msg.meta?.editor) recordEdit(msg.meta.editor, msg.meta.editedAt, msg.content);
@@ -671,7 +718,8 @@
 
       if (msg.type === 'auth-error') {
         editUnlocked = false;
-        editToken = null;
+        editKey = null;
+        secretKey = null;
         updateProfileAccess();
         showTokenModal();
         tokenInput.classList.add('error');
@@ -681,6 +729,7 @@
 
       if (msg.type === 'protected') {
         isProtected = !!msg.protected;
+        if (msg.publicKey) roomPublicKey = msg.publicKey;
         updateProfileAccess();
       }
     };
