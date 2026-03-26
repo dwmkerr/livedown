@@ -58,24 +58,23 @@ async function startSharing(
   );
   console.log(`  Edit key  \x1b[33m${editKey}\x1b[0m\n`);
 
-  const { confirm } = await import("@inquirer/prompts");
-  const shouldCopy = await confirm({
-    message: "Copy edit key to clipboard?",
-    default: true,
-  });
-  if (shouldCopy) {
-    try {
-      const { default: clipboardy } = await import("clipboardy");
-      await clipboardy.write(editKey);
-      console.log("  \x1b[32m✓ Edit key copied to clipboard\x1b[0m\n");
-    } catch {
-      console.log("  \x1b[31m✗ Could not copy to clipboard\x1b[0m\n");
-    }
-  }
-
   startWatcher(filePath, doc, roomUrl, opts.editor, editKey, publicKey);
 
   if (process.stdin.isTTY) {
+    const { confirm } = await import("@inquirer/prompts");
+    const shouldCopy = await confirm({
+      message: "Copy edit key to clipboard?",
+      default: true,
+    });
+    if (shouldCopy) {
+      try {
+        const { default: clipboardy } = await import("clipboardy");
+        await clipboardy.write(editKey);
+        console.log("  \x1b[32m✓ Edit key copied to clipboard\x1b[0m\n");
+      } catch {
+        console.log("  \x1b[31m✗ Could not copy to clipboard\x1b[0m\n");
+      }
+    }
     process.stdin.setRawMode(true);
     process.stdin.resume();
     process.stdin.on("data", async (key: Buffer) => {
