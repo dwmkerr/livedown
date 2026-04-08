@@ -123,22 +123,28 @@ program
   });
 
 function fileCompleter(line: string): [string[], string] {
-  // Resolve to absolute path for directory reads, but return relative matches
-  const input = line || ".";
+  // Determine the directory to list and the prefix to filter by.
+  // - Empty input → list current directory
+  // - Ends with "/" → list inside that directory
+  // - Otherwise → dirname/basename split
   let dir: string;
   let prefix: string;
+  let dirPart: string;
 
-  try {
-    const resolved = path.resolve(input);
-    if (fs.existsSync(resolved) && fs.statSync(resolved).isDirectory()) {
-      dir = resolved;
-      prefix = "";
-    } else {
-      dir = path.dirname(resolved);
-      prefix = path.basename(resolved);
-    }
-  } catch {
-    return [[], line];
+  if (!line) {
+    dir = ".";
+    dirPart = "";
+    prefix = "";
+  } else if (line.endsWith("/")) {
+    dir = line;
+    dirPart = line;
+    prefix = "";
+  } else {
+    dir = path.dirname(line) || ".";
+    dirPart = line.endsWith("/") ? line : path.dirname(line);
+    if (dirPart && !dirPart.endsWith("/")) dirPart += "/";
+    if (dirPart === "./") dirPart = "";
+    prefix = path.basename(line);
   }
 
   try {
@@ -148,13 +154,14 @@ function fileCompleter(line: string): [string[], string] {
       .map((e) => {
         try {
           const full = path.join(dir, e);
-          return fs.statSync(full).isDirectory() ? `${e}/` : e;
+          const suffix = fs.statSync(full).isDirectory() ? "/" : "";
+          return dirPart + e + suffix;
         } catch {
-          return e;
+          return dirPart + e;
         }
       })
       .sort();
-    return [matches, prefix];
+    return [matches, line];
   } catch {
     return [[], line];
   }
@@ -165,6 +172,7 @@ function promptForFile(): Promise<string> {
     const rl = readline.createInterface({
       input: process.stdin,
       output: process.stdout,
+      terminal: true,
       completer: fileCompleter,
     });
     rl.question("File to share: ", (answer) => {
