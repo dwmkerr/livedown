@@ -4,6 +4,7 @@ import crypto from "crypto";
 import fs from "fs";
 import os from "os";
 import path from "path";
+import readline from "readline";
 import { Command } from "commander";
 import { startWatcher } from "./watcher";
 import { generateEditKeyPair, publicKeyFromEditKey } from "./token";
@@ -56,25 +57,13 @@ async function startSharing(
   console.log(
     `  Join      \x1b[4m\x1b]8;;${viewerUrl}\x07${viewerUrl}\x1b]8;;\x07\x1b[24m`
   );
-  console.log(`  Edit key  \x1b[33m${editKey}\x1b[0m\n`);
+  console.log(
+    `  Edit key  \x1b[33m${editKey}\x1b[0m \x1b[2m(press c to copy)\x1b[0m\n`
+  );
 
   startWatcher(filePath, doc, roomUrl, opts.editor, editKey, publicKey);
 
   if (process.stdin.isTTY) {
-    const { confirm } = await import("@inquirer/prompts");
-    const shouldCopy = await confirm({
-      message: "Copy edit key to clipboard?",
-      default: true,
-    });
-    if (shouldCopy) {
-      try {
-        const { default: clipboardy } = await import("clipboardy");
-        await clipboardy.write(editKey);
-        console.log("  \x1b[32m✓ Edit key copied to clipboard\x1b[0m\n");
-      } catch {
-        console.log("  \x1b[31m✗ Could not copy to clipboard\x1b[0m\n");
-      }
-    }
     process.stdin.setRawMode(true);
     process.stdin.resume();
     process.stdin.on("data", async (key: Buffer) => {
@@ -82,19 +71,19 @@ async function startSharing(
       if (ch === "q" || ch === "\u0003") {
         process.exit(0);
       }
-      if (ch === "t") {
+      if (ch === "c") {
         try {
           const { default: clipboardy } = await import("clipboardy");
           await clipboardy.write(editKey);
-          console.log(
-            "\x1b[2K\r  \x1b[32m✓ Edit key copied to clipboard\x1b[0m"
+          process.stdout.write(
+            "\x1b[2K\r  \x1b[32m✓ Edit key copied to clipboard\x1b[0m\n"
           );
-          process.stdout.write("\x1b[2m  t copy edit key  q quit\x1b[0m");
+          process.stdout.write("\x1b[2m  c copy key  q quit\x1b[0m");
         } catch {
-          console.log(
-            "\x1b[2K\r  \x1b[31m✗ Could not copy to clipboard\x1b[0m"
+          process.stdout.write(
+            "\x1b[2K\r  \x1b[31m✗ Could not copy to clipboard\x1b[0m\n"
           );
-          process.stdout.write("\x1b[2m  t copy edit key  q quit\x1b[0m");
+          process.stdout.write("\x1b[2m  c copy key  q quit\x1b[0m");
         }
       }
     });
@@ -133,22 +122,76 @@ program
     await open(url);
   });
 
+function fileCompleter(line: string): [string[], string] {
+  // Resolve to absolute path for directory reads, but return relative matches
+  const input = line || ".";
+  let dir: string;
+  let prefix: string;
+
+  try {
+    const resolved = path.resolve(input);
+    if (fs.existsSync(resolved) && fs.statSync(resolved).isDirectory()) {
+      dir = resolved;
+      prefix = "";
+    } else {
+      dir = path.dirname(resolved);
+      prefix = path.basename(resolved);
+    }
+  } catch {
+    return [[], line];
+  }
+
+  try {
+    const entries = fs.readdirSync(dir);
+    const matches = entries
+      .filter((e) => e.startsWith(prefix))
+      .map((e) => {
+        try {
+          const full = path.join(dir, e);
+          return fs.statSync(full).isDirectory() ? `${e}/` : e;
+        } catch {
+          return e;
+        }
+      })
+      .sort();
+    return [matches, prefix];
+  } catch {
+    return [[], line];
+  }
+}
+
+function promptForFile(): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const rl = readline.createInterface({
+      input: process.stdin,
+      output: process.stdout,
+      completer: fileCompleter,
+    });
+    rl.question("File to share: ", (answer) => {
+      rl.close();
+      const trimmed = answer.trim();
+      if (!trimmed) return reject(new Error("No file specified"));
+      if (!fs.existsSync(path.resolve(trimmed))) {
+        return reject(new Error(`File not found: ${trimmed}`));
+      }
+      resolve(trimmed);
+    });
+  });
+}
+
 // No subcommand — prompt for file path
 if (process.argv.length === 2) {
   (async () => {
-    const { input } = await import("@inquirer/prompts");
-    const file = await input({
-      message: "File to share:",
-      validate: (value) => {
-        if (!value.trim()) return "Please enter a file path";
-        if (!fs.existsSync(path.resolve(value.trim()))) return "File not found";
-        return true;
-      },
-    });
-    startSharing(file.trim(), {
-      relay: defaultRelay,
-      editor: defaultEditor,
-    });
+    try {
+      const file = await promptForFile();
+      await startSharing(file, {
+        relay: defaultRelay,
+        editor: defaultEditor,
+      });
+    } catch (err) {
+      console.error(`Error: ${(err as Error).message}`);
+      process.exit(1);
+    }
   })();
 } else {
   program.parse();

@@ -31,7 +31,7 @@ function parseMeta(
   };
 }
 
-const HINTS = "\x1b[2m  t copy edit key  q quit\x1b[0m";
+const HINTS = "\x1b[2m  c copy key  q quit\x1b[0m";
 let showHints = false;
 
 function log(msg: string): void {
@@ -80,9 +80,6 @@ export function startWatcher(
 
     ws.on("open", () => {
       log("Connected to room");
-      if (showHints && process.stdout.isTTY) {
-        process.stdout.write(HINTS);
-      }
       ws!.send(JSON.stringify({ type: "set-token", publicKey }));
       push(fs.readFileSync(filePath, "utf8"));
     });

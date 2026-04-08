@@ -8,7 +8,7 @@
     "livedown": "dist/cli.js"
   },
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && chmod +x dist/cli.js",
     "build:watch": "tsc -w",
     "dev": "tsx watch src/cli.ts",
     "start": "ts-node ./src/cli.ts",
