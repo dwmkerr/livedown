@@ -683,7 +683,10 @@
     recordEdit(myGuestName, new Date().toISOString(), content);
   }
 
-  var gotContent = false;
+  function showNotFound() {
+    var name = docName.split('/').pop() || docName;
+    showLanding(name + ' not found — no one is sharing this document. See below to get started.');
+  }
 
   function connect() {
     ws = new WebSocket(url);
@@ -699,11 +702,11 @@
 
       if (msg.type === 'init') {
         setProfile(msg.guestId);
-        // Treat any of these as proof that someone is sharing this document:
-        // - content exists
-        // - room is protected (someone registered a public key)
-        // - meta has an editor (someone has pushed at least once)
-        if (msg.content || msg.protected || msg.meta?.editor) gotContent = true;
+        // Authoritative signal from the relay: is there a sharer present?
+        if (!msg.hasSharer) {
+          showNotFound();
+          return;
+        }
         if (msg.content) {
           cm.setValue(msg.content);
           renderPreview(msg.content);
@@ -718,8 +721,6 @@
       }
 
       if (msg.type === 'update') {
-        gotContent = true;
-
         setMeta(msg.meta);
         setLastEdit(msg.meta?.editor, msg.meta?.editedAt);
         recordEdit(msg.meta?.editor, msg.meta?.editedAt, msg.content);
@@ -731,6 +732,7 @@
         } else {
           flashRemoteEdit();
         }
+        return;
       }
 
       if (msg.type === 'auth-error') {
@@ -744,11 +746,16 @@
         return;
       }
 
-      if (msg.type === 'protected') {
+      if (msg.type === 'sharer-here') {
         isProtected = !!msg.protected;
-        if (msg.protected) gotContent = true;
         if (msg.publicKey) roomPublicKey = msg.publicKey;
         updateProfileAccess();
+        return;
+      }
+
+      if (msg.type === 'sharer-gone') {
+        showNotFound();
+        return;
       }
     };
 
@@ -760,14 +767,6 @@
   }
 
   connect();
-
-  // Show not-found if no content arrives within 8s
-  setTimeout(function () {
-    if (!gotContent) {
-      var name = docName.split('/').pop() || docName;
-      showLanding(name + ' not found — no one is sharing this document. See below to get started.');
-    }
-  }, 8000);
 
   // ── Draggable divider ────────────────────────────────────────
   const divider     = document.getElementById('divider');

@@ -29,6 +29,9 @@ export default class LivedownRoom implements Party.Server {
   latestMeta: Record<string, string> = {};
   guestCounter = 0;
   publicKey: string | undefined = undefined;
+  // Connection IDs that have registered as sharers via set-token.
+  // hasSharer = sharers.size > 0. Authoritative signal to viewers.
+  sharers = new Set<string>();
 
   constructor(readonly room: Party.Room) {}
 
@@ -43,25 +46,44 @@ export default class LivedownRoom implements Party.Server {
         content: this.latestContent,
         meta: this.latestMeta,
         guestId: this.guestCounter,
+        hasSharer: this.sharers.size > 0,
         protected: !!this.publicKey,
         publicKey: this.publicKey || null,
       })
     );
   }
 
+  onClose(conn: Party.Connection) {
+    if (this.sharers.delete(conn.id) && this.sharers.size === 0) {
+      // Last sharer disconnected — notify all remaining viewers
+      this.room.broadcast(JSON.stringify({ type: "sharer-gone" }));
+    }
+  }
+
   async onMessage(message: string, sender: Party.Connection) {
     try {
       const msg = JSON.parse(message);
 
-      if (msg.type === "set-token" && !this.publicKey && msg.publicKey) {
-        this.publicKey = msg.publicKey;
-        this.room.broadcast(
-          JSON.stringify({
-            type: "protected",
-            protected: true,
-            publicKey: this.publicKey,
-          })
-        );
+      if (msg.type === "set-token" && msg.publicKey) {
+        // First sharer registers the public key. Subsequent set-token
+        // messages with a matching key are accepted (reconnect / multi-sharer);
+        // mismatched keys are rejected.
+        if (!this.publicKey) {
+          this.publicKey = msg.publicKey;
+        } else if (this.publicKey !== msg.publicKey) {
+          return;
+        }
+        const wasEmpty = this.sharers.size === 0;
+        this.sharers.add(sender.id);
+        if (wasEmpty) {
+          this.room.broadcast(
+            JSON.stringify({
+              type: "sharer-here",
+              protected: true,
+              publicKey: this.publicKey,
+            })
+          );
+        }
         return;
       }
 
