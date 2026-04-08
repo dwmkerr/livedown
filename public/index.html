@@ -699,7 +699,11 @@
 
       if (msg.type === 'init') {
         setProfile(msg.guestId);
-        if (msg.content) gotContent = true;
+        // Treat any of these as proof that someone is sharing this document:
+        // - content exists
+        // - room is protected (someone registered a public key)
+        // - meta has an editor (someone has pushed at least once)
+        if (msg.content || msg.protected || msg.meta?.editor) gotContent = true;
         if (msg.content) {
           cm.setValue(msg.content);
           renderPreview(msg.content);
@@ -742,6 +746,7 @@
 
       if (msg.type === 'protected') {
         isProtected = !!msg.protected;
+        if (msg.protected) gotContent = true;
         if (msg.publicKey) roomPublicKey = msg.publicKey;
         updateProfileAccess();
       }
