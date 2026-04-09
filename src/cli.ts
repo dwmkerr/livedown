@@ -54,16 +54,34 @@ async function startSharing(
   const roomUrl = buildRoomUrl(opts.relay, doc);
 
   console.log(`\n  Watching  ${filePath}`);
+  // Show a transient "Connecting..." line that gets overwritten when the
+  // watcher is ready. The URL is only printed after the relay acks the sharer
+  // so the user can never share a URL before the room is fully established.
+  if (process.stdout.isTTY) {
+    process.stdout.write(`  \x1b[2mConnecting...\x1b[0m`);
+  } else {
+    console.log("  Connecting...");
+  }
+
+  try {
+    await startWatcher(filePath, doc, roomUrl, opts.editor, editKey, publicKey);
+  } catch (err) {
+    if (process.stdout.isTTY) process.stdout.write("\r\x1b[2K");
+    console.error(`  \x1b[31m✗ ${(err as Error).message}\x1b[0m`);
+    process.exit(1);
+  }
+
+  if (process.stdout.isTTY) process.stdout.write("\r\x1b[2K");
   console.log(
-    `  Join      \x1b[4m\x1b]8;;${viewerUrl}\x07${viewerUrl}\x1b]8;;\x07\x1b[24m`
+    `  Join      \x1b[4m\x1b]8;;${viewerUrl}\x07${viewerUrl}\x1b]8;;\x07\x1b[24m \x1b[2m(press o to open)\x1b[0m`
   );
   console.log(
     `  Edit key  \x1b[33m${editKey}\x1b[0m \x1b[2m(press c to copy)\x1b[0m\n`
   );
 
-  startWatcher(filePath, doc, roomUrl, opts.editor, editKey, publicKey);
-
   if (process.stdin.isTTY) {
+    const hints = "\x1b[2m  o open  c copy key  q quit\x1b[0m";
+    process.stdout.write(hints);
     process.stdin.setRawMode(true);
     process.stdin.resume();
     process.stdin.on("data", async (key: Buffer) => {
@@ -78,12 +96,27 @@ async function startSharing(
           process.stdout.write(
             "\x1b[2K\r  \x1b[32m✓ Edit key copied to clipboard\x1b[0m\n"
           );
-          process.stdout.write("\x1b[2m  c copy key  q quit\x1b[0m");
+          process.stdout.write(hints);
         } catch {
           process.stdout.write(
             "\x1b[2K\r  \x1b[31m✗ Could not copy to clipboard\x1b[0m\n"
           );
-          process.stdout.write("\x1b[2m  c copy key  q quit\x1b[0m");
+          process.stdout.write(hints);
+        }
+      }
+      if (ch === "o") {
+        try {
+          const open = (await import("open")).default;
+          await open(viewerUrl);
+          process.stdout.write(
+            "\x1b[2K\r  \x1b[32m✓ Opened in browser\x1b[0m\n"
+          );
+          process.stdout.write(hints);
+        } catch {
+          process.stdout.write(
+            "\x1b[2K\r  \x1b[31m✗ Could not open browser\x1b[0m\n"
+          );
+          process.stdout.write(hints);
         }
       }
     });

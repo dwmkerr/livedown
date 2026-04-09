@@ -75,13 +75,16 @@ export default class LivedownRoom implements Party.Server {
         }
         const wasEmpty = this.sharers.size === 0;
         this.sharers.add(sender.id);
+        // Acknowledge to the sender so the CLI can proceed to print the URL.
+        sender.send(JSON.stringify({ type: "sharer-ack" }));
         if (wasEmpty) {
           this.room.broadcast(
             JSON.stringify({
               type: "sharer-here",
               protected: true,
               publicKey: this.publicKey,
-            })
+            }),
+            [sender.id]
           );
         }
         return;

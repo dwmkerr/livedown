@@ -367,17 +367,67 @@
     })
     .catch(function() {});
 
-  function showLanding(errorMsg) {
-    document.getElementById('landing').style.display = 'block';
-    document.getElementById('statusbar').style.display = 'none';
-    document.getElementById('panes').style.display = 'none';
-    document.getElementById('edits-popover').style.display = 'none';
-    document.title = 'livedown';
-    if (errorMsg) {
-      var el = document.getElementById('landing-error');
-      el.textContent = errorMsg;
-      el.classList.add('visible');
+  // ── App state machine ───────────────────────────────────────
+  // States: 'loading' | 'live' | 'offline' | 'notfound'
+  // Transitions are driven entirely by relay messages — no timeouts.
+  var appState = 'loading';
+
+  function setAppState(newState, errorMsg) {
+    appState = newState;
+    var landing = document.getElementById('landing');
+    var statusbar = document.getElementById('statusbar');
+    var panes = document.getElementById('panes');
+    var editsPopover = document.getElementById('edits-popover');
+    var landingError = document.getElementById('landing-error');
+
+    if (newState === 'notfound') {
+      landing.style.display = 'block';
+      statusbar.style.display = 'none';
+      panes.style.display = 'none';
+      editsPopover.style.display = 'none';
+      document.title = 'livedown';
+      if (errorMsg) {
+        landingError.textContent = errorMsg;
+        landingError.classList.add('visible');
+      }
+      return;
     }
+
+    // live / offline / loading — show the main UI
+    landing.style.display = 'none';
+    statusbar.style.display = '';
+    panes.style.display = '';
+    editsPopover.style.display = '';
+    landingError.classList.remove('visible');
+
+    if (newState === 'loading') {
+      setStatus('connecting');
+      return;
+    }
+
+    if (newState === 'offline') {
+      // Sharer disconnected — keep last known content visible but disable editing
+      setStatus('offline');
+      if (typeof cm !== 'undefined') {
+        cm.setOption('readOnly', true);
+        cm.refresh();
+      }
+      return;
+    }
+
+    if (newState === 'live') {
+      setStatus('live');
+      // Re-apply edit lock if the room is protected and unlocked state is unknown
+      if (typeof cm !== 'undefined') {
+        cm.setOption('readOnly', isProtected && !editUnlocked);
+        cm.refresh();
+      }
+    }
+  }
+
+  // Back-compat alias: older code called showLanding() with no hash.
+  function showLanding(errorMsg) {
+    setAppState('notfound', errorMsg);
   }
 
   // No hash — show landing page
@@ -514,8 +564,13 @@
   const label = document.getElementById('sb-label');
 
   function setStatus(state) {
-    dot.className   = state;
-    label.textContent = state === 'live' ? 'live' : state === 'offline' ? 'offline' : 'connecting…';
+    // states: 'live', 'offline' (sharer gone), 'disconnected' (ws lost), 'connecting'
+    dot.className = state === 'live' ? 'live' : state === 'connecting' ? '' : 'offline';
+    label.textContent =
+      state === 'live' ? 'live'
+      : state === 'offline' ? 'sharer offline'
+      : state === 'disconnected' ? 'disconnected'
+      : 'connecting…';
   }
 
   function setMeta(meta) {
@@ -683,18 +738,25 @@
     recordEdit(myGuestName, new Date().toISOString(), content);
   }
 
-  function showNotFound() {
+  function notFoundMessage() {
     var name = docName.split('/').pop() || docName;
-    showLanding(name + ' not found — no one is sharing this document. See below to get started.');
+    return name + ' not found — no one is sharing this document. See below to get started.';
+  }
+
+  function applySharerInfo(msg) {
+    isProtected = !!msg.protected;
+    if (msg.publicKey) roomPublicKey = msg.publicKey;
+    updateProfileAccess();
   }
 
   function connect() {
     ws = new WebSocket(url);
 
     ws.onopen = () => {
-      setStatus('live');
       reconnectDelay = 1000;
       document.getElementById('loading').classList.remove('active');
+      // Don't call setStatus('live') here — wait for init to tell us whether
+      // we're actually live (hasSharer:true) or in notfound (hasSharer:false).
     };
 
     ws.onmessage = (e) => {
@@ -702,21 +764,21 @@
 
       if (msg.type === 'init') {
         setProfile(msg.guestId);
-        // Authoritative signal from the relay: is there a sharer present?
-        if (!msg.hasSharer) {
-          showNotFound();
-          return;
-        }
         if (msg.content) {
           cm.setValue(msg.content);
           renderPreview(msg.content);
         }
         setMeta(msg.meta);
-        isProtected = !!msg.protected;
-        if (msg.publicKey) roomPublicKey = msg.publicKey;
-        updateProfileAccess();
+        applySharerInfo(msg);
         setLastEdit(msg.meta?.editor, msg.meta?.editedAt);
         if (msg.meta?.editor) recordEdit(msg.meta.editor, msg.meta.editedAt, msg.content);
+
+        // Authoritative: does the room have a sharer right now?
+        if (msg.hasSharer) {
+          setAppState('live');
+        } else {
+          setAppState('notfound', notFoundMessage());
+        }
         return;
       }
 
@@ -747,20 +809,24 @@
       }
 
       if (msg.type === 'sharer-here') {
-        isProtected = !!msg.protected;
-        if (msg.publicKey) roomPublicKey = msg.publicKey;
-        updateProfileAccess();
+        applySharerInfo(msg);
+        // Transition: notfound/offline → live
+        setAppState('live');
         return;
       }
 
       if (msg.type === 'sharer-gone') {
-        showNotFound();
+        // Don't kick the viewer to the landing page — the sharer might reconnect.
+        // Keep content visible but disable editing.
+        setAppState('offline');
         return;
       }
     };
 
     ws.onclose = () => {
-      setStatus('offline');
+      // Viewer's own WebSocket lost — this is different from the sharer going
+      // offline. Show "disconnected" until reconnect succeeds.
+      setStatus('disconnected');
       setTimeout(connect, reconnectDelay);
       reconnectDelay = Math.min(reconnectDelay * 2, 10000);
     };
