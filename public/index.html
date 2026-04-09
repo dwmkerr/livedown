@@ -671,6 +671,7 @@
       editKey = val;
       secretKey = kp.secretKey;
       editUnlocked = true;
+      cm.setOption('readOnly', false);
       updateProfileAccess();
       hideTokenModal();
     } catch (e) {
