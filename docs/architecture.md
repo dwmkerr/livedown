@@ -115,13 +115,18 @@ The relay distinguishes roles via a `sharers: Set<string>` of connection IDs. Wh
 
 ### Transitions
 
-| From      | Event           | To        | Why |
-|-----------|-----------------|-----------|-----|
-| Loading   | `init hasSharer:true` | Live      | Sharer was already registered |
-| Loading   | `init hasSharer:false`| NotFound  | No sharer; ghost room |
-| NotFound  | `sharer-here`   | Live      | User started CLI after opening browser |
-| Live      | `sharer-gone`   | Offline   | Sharer disconnected (maybe temporarily) |
-| Offline   | `sharer-here`   | Live      | Sharer reconnected (CLI restart, network blip) |
+| From      | Event                  | To        | Why |
+|-----------|------------------------|-----------|-----|
+| Loading   | `init hasSharer:true`  | Live      | Sharer was already registered |
+| Loading   | `init hasSharer:false` | NotFound  | First init, no sharer; ghost room |
+| NotFound  | `sharer-here`          | Live      | User started CLI after opening browser |
+| Live      | `sharer-gone`          | Offline   | Sharer disconnected (maybe temporarily) |
+| Live      | `init hasSharer:false` | Offline   | Viewer's own ws reconnected and sharer isn't there right now — *not* NotFound, because we've seen a sharer before |
+| Live      | `init hasSharer:true`  | Live      | Viewer's own ws reconnected, sharer still there |
+| Offline   | `sharer-here`          | Live      | Sharer reconnected (CLI restart, network blip) |
+| Offline   | `init hasSharer:true`  | Live      | Viewer's ws reconnected and sharer is already back |
+
+**Rule: NotFound is only reachable from Loading.** Once a viewer has been Live, they can never return to NotFound — only to Offline. Transitioning back to the landing page after the user has been editing would discard their session and be a bad UX. The Offline state keeps content visible, disables editing, and recovers automatically when the sharer returns.
 
 **No timeouts anywhere.** Every transition is triggered by an explicit relay message. The browser never guesses.
 

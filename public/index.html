@@ -370,7 +370,13 @@
   // ── App state machine ───────────────────────────────────────
   // States: 'loading' | 'live' | 'offline' | 'notfound'
   // Transitions are driven entirely by relay messages — no timeouts.
+  //
+  // Rule: 'notfound' is only reachable from 'loading'. Once a viewer has
+  // seen a sharer (live state), subsequent disconnects transition to
+  // 'offline' instead — the content stays visible and a reconnecting
+  // sharer restores the session.
   var appState = 'loading';
+  var hasEverBeenLive = false;
 
   function setAppState(newState, errorMsg) {
     appState = newState;
@@ -379,12 +385,15 @@
     var panes = document.getElementById('panes');
     var editsPopover = document.getElementById('edits-popover');
     var landingError = document.getElementById('landing-error');
+    var tokenModal = document.getElementById('token-modal');
 
     if (newState === 'notfound') {
       landing.style.display = 'block';
       statusbar.style.display = 'none';
       panes.style.display = 'none';
       editsPopover.style.display = 'none';
+      // Close any open modal — it's meaningless when there's no sharer.
+      if (tokenModal) tokenModal.classList.remove('open');
       document.title = 'livedown';
       if (errorMsg) {
         landingError.textContent = errorMsg;
@@ -416,6 +425,7 @@
     }
 
     if (newState === 'live') {
+      hasEverBeenLive = true;
       setStatus('live');
       // Re-apply edit lock if the room is protected and unlocked state is unknown
       if (typeof cm !== 'undefined') {
@@ -777,7 +787,13 @@
         // Authoritative: does the room have a sharer right now?
         if (msg.hasSharer) {
           setAppState('live');
+        } else if (hasEverBeenLive) {
+          // Viewer reconnected and the sharer isn't currently present, but
+          // we've seen one before — this is the 'offline' state, not 'notfound'.
+          // The sharer may come back; keep content visible, disable editing.
+          setAppState('offline');
         } else {
+          // First init and no sharer — truly not found.
           setAppState('notfound', notFoundMessage());
         }
         return;
