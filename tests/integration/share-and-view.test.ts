@@ -120,6 +120,14 @@ function waitForFileContent(
   });
 }
 
+const OPEN_BROWSER = process.env.LIVEDOWN_OPEN_BROWSER === "1";
+
+async function openInBrowser(url: string): Promise<void> {
+  if (!OPEN_BROWSER) return;
+  const open = (await import("open")).default;
+  await open(url);
+}
+
 describe("integration: share and view", () => {
   let cli: CliInfo;
   let viewer: WebSocket;
@@ -141,12 +149,14 @@ describe("integration: share and view", () => {
 
   it("share: CLI connects to relay and prints join info", async () => {
     cli = await startCli();
+    await openInBrowser(cli.viewerUrl);
     expect(cli.editKey).toMatch(/^[a-f0-9]{64}$/);
     expect(cli.roomUrl).toContain("livedown.dwmkerr.partykit.dev");
   });
 
   it("view: viewer connects and receives init with sharer present", async () => {
     cli = await startCli();
+    await openInBrowser(cli.viewerUrl);
     viewer = await connectViewer(cli.roomUrl);
     const init = await waitForMessage(viewer, "init");
     expect(init.hasSharer).toBe(true);
@@ -156,6 +166,7 @@ describe("integration: share and view", () => {
 
   it("edit rejected: unsigned push returns auth-error", async () => {
     cli = await startCli();
+    await openInBrowser(cli.viewerUrl);
     viewer = await connectViewer(cli.roomUrl);
     await waitForMessage(viewer, "init");
 
@@ -173,6 +184,7 @@ describe("integration: share and view", () => {
 
   it("edit online: signed push updates the local file", async () => {
     cli = await startCli();
+    await openInBrowser(cli.viewerUrl);
     viewer = await connectViewer(cli.roomUrl);
     await waitForMessage(viewer, "init");
 
@@ -193,6 +205,7 @@ describe("integration: share and view", () => {
 
   it("edit local: file change on disk is pushed to viewer", async () => {
     cli = await startCli();
+    await openInBrowser(cli.viewerUrl);
     viewer = await connectViewer(cli.roomUrl);
     await waitForMessage(viewer, "init");
 
@@ -206,6 +219,7 @@ describe("integration: share and view", () => {
 
   it("close: killing the CLI sends sharer-gone", async () => {
     cli = await startCli();
+    await openInBrowser(cli.viewerUrl);
     viewer = await connectViewer(cli.roomUrl);
     await waitForMessage(viewer, "init");
 
