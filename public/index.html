@@ -427,9 +427,11 @@
     if (newState === 'live') {
       hasEverBeenLive = true;
       setStatus('live');
-      // Re-apply edit lock if the room is protected and unlocked state is unknown
+      // Never use readOnly in live state - the beforeChange handler blocks
+      // edits and shows the edit key modal for protected rooms. readOnly
+      // silently swallows input so the user never sees the modal.
       if (typeof cm !== 'undefined') {
-        cm.setOption('readOnly', isProtected && !editUnlocked);
+        cm.setOption('readOnly', false);
         cm.refresh();
       }
     }
