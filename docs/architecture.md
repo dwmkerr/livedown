@@ -5,19 +5,29 @@ Livedown lets you share a local file and collaborate on it live - across browser
 ## Overview
 
 ```
-                          ┌─────────────────────┐
-                          │   Browser Viewer    │
-                          │   (livedown.dev)    │
-                          └──────────┬──────────┘
-                                     │ WebSocket
-                                     │
-  ┌─────────────┐         ┌──────────┴──────────┐         ┌─────────────┐
-  │  Local File │  signed  │       Relay        │  signed  │  Local File │
-  │  (Machine A)│─pushes──▶│  (Cloudflare)      │◀─pushes──│  (Machine B)│
-  │             │◀verified─│                    │─verified─▶│             │
-  └─────────────┘          └─────────────────────┘          └─────────────┘
-    CLI watcher                 PartyKit                     CLI watcher
-                             (stateful room)                  (future)
+                              ┌───────────────┐
+                              │    Website    │
+                              │  (Viewer UI)  │
+                              └───────┬───────┘
+                                      │ WebSocket
+                                      │
+                            ┌─────────┴─────────┐
+                            │   Stateful Room   │
+   signed pushes            │   (Relay)         │            signed pushes
+  ┌────────────────────────▶│                   │◀────────────────────────┐
+  │            verified     │                   │     verified           │
+  │◀────────────────────────│                   │────────────────────────▶│
+  │                         └───────────────────┘                        │
+  │                              (PartyKit)                              │
+  │                                                                      │
+  ┌──────────────┐                                          ┌──────────────┐
+  │ CLI - Share  │                                          │ CLI - Join   │
+  │              │                                          │   (future)   │
+  │ (Local File) │                                          │ (Local File) │
+  └──────┬───────┘                                          └──────┬───────┘
+         │                                                         │
+  Editor (e.g. Vim)                                         Editor (e.g. Vim)
+  IDE (e.g. Cursor)                                         IDE (e.g. Cursor)
 ```
 
 The relay is a stateful WebSocket room hosted on Cloudflare Workers via [PartyKit](https://partykit.io). It holds a single room per shared document, tracks which connections are sharers, verifies Ed25519 signatures on every push, and broadcasts verified updates to all connected clients. It also serves the browser viewer as a static HTML page.
