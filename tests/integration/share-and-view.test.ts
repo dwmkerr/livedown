@@ -31,7 +31,6 @@ function startCli(): Promise<CliInfo> {
 
     proc.stdout!.on("data", (data: Buffer) => {
       stdout += data.toString();
-      // Strip ANSI escape codes for parsing
       const clean = stdout.replace(
         /\x1b\[[0-9;]*[a-zA-Z]|\x1b\]8;;[^\x07]*\x07/g,
         ""
@@ -98,6 +97,29 @@ function waitForMessage(
   });
 }
 
+function waitForFileContent(
+  filePath: string,
+  match: string,
+  timeoutMs = MSG_TIMEOUT
+): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(
+      () => reject(new Error(`File did not contain "${match}" within timeout`)),
+      timeoutMs
+    );
+    const check = () => {
+      const content = fs.readFileSync(filePath, "utf8");
+      if (content.includes(match)) {
+        clearTimeout(timeout);
+        resolve(content);
+      } else {
+        setTimeout(check, 200);
+      }
+    };
+    check();
+  });
+}
+
 describe("integration: share and view", () => {
   let cli: CliInfo;
   let viewer: WebSocket;
@@ -105,7 +127,6 @@ describe("integration: share and view", () => {
 
   beforeAll(async () => {
     originalContent = fs.readFileSync(TEST_FILE, "utf8");
-    // Build first to make sure dist/cli.js exists
     expect(fs.existsSync(CLI_PATH)).toBe(true);
   });
 
@@ -118,22 +139,26 @@ describe("integration: share and view", () => {
     if (cli?.proc && !cli.proc.killed) cli.proc.kill();
   });
 
-  it("full share/view/edit/offline lifecycle", async () => {
-    // 1. Start the CLI sharing the test file
+  it("share: CLI connects to relay and prints join info", async () => {
     cli = await startCli();
     expect(cli.editKey).toMatch(/^[a-f0-9]{64}$/);
     expect(cli.roomUrl).toContain("livedown.dwmkerr.partykit.dev");
+  });
 
-    // 2. Connect as a viewer
+  it("view: viewer connects and receives init with sharer present", async () => {
+    cli = await startCli();
     viewer = await connectViewer(cli.roomUrl);
-
-    // 3. Verify init message
     const init = await waitForMessage(viewer, "init");
     expect(init.hasSharer).toBe(true);
     expect(init.protected).toBe(true);
     expect(init.publicKey).toBeTruthy();
+  });
 
-    // 4. Push without signature - expect auth-error
+  it("edit rejected: unsigned push returns auth-error", async () => {
+    cli = await startCli();
+    viewer = await connectViewer(cli.roomUrl);
+    await waitForMessage(viewer, "init");
+
     viewer.send(
       JSON.stringify({
         type: "push",
@@ -141,47 +166,51 @@ describe("integration: share and view", () => {
         meta: { editor: "attacker" },
       })
     );
-    const authError = await waitForMessage(viewer, "auth-error");
-    expect(authError.type).toBe("auth-error");
 
-    // 5. Push with valid signature - expect update broadcast
-    const testContent = "# Integration Test\n\nWritten by the test suite.";
-    const signature = signContent(testContent, cli.editKey);
+    const err = await waitForMessage(viewer, "auth-error");
+    expect(err.type).toBe("auth-error");
+  });
+
+  it("edit online: signed push updates the local file", async () => {
+    cli = await startCli();
+    viewer = await connectViewer(cli.roomUrl);
+    await waitForMessage(viewer, "init");
+
+    const content = "# Edit Online Test\n\nPushed from the viewer.";
+    const signature = signContent(content, cli.editKey);
     viewer.send(
       JSON.stringify({
         type: "push",
-        content: testContent,
+        content,
         signature,
         meta: { editor: "test-viewer" },
       })
     );
 
-    // The relay broadcasts the update to other connections (excluding sender).
-    // Since we're the only viewer, we won't receive the update broadcast.
-    // But the watcher (the CLI) WILL receive it and write to disk.
-    // Wait for the file to be updated.
-    await new Promise<void>((resolve, reject) => {
-      const timeout = setTimeout(
-        () => reject(new Error("File not updated within timeout")),
-        MSG_TIMEOUT
-      );
-      const check = () => {
-        const content = fs.readFileSync(TEST_FILE, "utf8");
-        if (content.includes("Integration Test")) {
-          clearTimeout(timeout);
-          resolve();
-        } else {
-          setTimeout(check, 200);
-        }
-      };
-      check();
-    });
-    const fileContent = fs.readFileSync(TEST_FILE, "utf8");
-    expect(fileContent).toContain("Integration Test");
+    const fileContent = await waitForFileContent(TEST_FILE, "Edit Online Test");
+    expect(fileContent).toContain("Pushed from the viewer.");
+  });
 
-    // 6. Kill the CLI - expect sharer-gone
+  it("edit local: file change on disk is pushed to viewer", async () => {
+    cli = await startCli();
+    viewer = await connectViewer(cli.roomUrl);
+    await waitForMessage(viewer, "init");
+
+    // Write directly to the file the CLI is watching
+    fs.writeFileSync(TEST_FILE, "# Local Edit\n\nWritten on disk.", "utf8");
+
+    const update = await waitForMessage(viewer, "update", 10000);
+    expect(update.content).toContain("Local Edit");
+    expect(update.signature).toBeTruthy();
+  });
+
+  it("close: killing the CLI sends sharer-gone", async () => {
+    cli = await startCli();
+    viewer = await connectViewer(cli.roomUrl);
+    await waitForMessage(viewer, "init");
+
     cli.proc.kill();
     const gone = await waitForMessage(viewer, "sharer-gone", 10000);
     expect(gone.type).toBe("sharer-gone");
-  }, 30000);
+  });
 });
