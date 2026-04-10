@@ -1,21 +1,28 @@
 # Livedown Architecture
 
-Livedown lets you share a local file and collaborate on it live — across browsers, terminals, and machines. You edit locally, everyone else sees it instantly.
+Livedown lets you share a local file and collaborate on it live - across browsers, terminals, IDEs, and machines. You edit locally, everyone else sees it instantly. Share a key and others can share and sync to their machines in real-time. Perfect for live collaboration on specs or designs, multi-person multi-agent live editing, connecting to GitHub to rapidly iterate on issue descriptions, pull requests and more.
 
 ## Overview
 
 ```
-  ┌─────────┐              ┌─────────┐              ┌─────────┐
-  │  Local   │    signed    │  Relay  │   updates    │ Remote  │
-  │  File    │────pushes───▶│ (Cloud) │─────────────▶│ Viewers │
-  │          │◀──verified───│         │◀──signed─────│         │
-  └─────────┘   WebSocket   └─────────┘  WebSocket   └─────────┘
-     CLI                    PartyKit /                Browser or
-     watcher               Cloudflare                  another
-                             Workers                     CLI
+                          ┌─────────────────────┐
+                          │   Browser Viewer    │
+                          │   (livedown.dev)    │
+                          └──────────┬──────────┘
+                                     │ WebSocket
+                                     │
+  ┌─────────────┐         ┌──────────┴──────────┐         ┌─────────────┐
+  │  Local File │  signed  │       Relay        │  signed  │  Local File │
+  │  (Machine A)│─pushes──▶│  (Cloudflare)      │◀─pushes──│  (Machine B)│
+  │             │◀verified─│                    │─verified─▶│             │
+  └─────────────┘          └─────────────────────┘          └─────────────┘
+    CLI watcher                 PartyKit                     CLI watcher
+                             (stateful room)                  (future)
 ```
 
-Three components. All communication is via WebSocket. The relay is stateful per room (tracks who's sharing, verifies signatures, broadcasts updates). Everything else is stateless.
+The relay is a stateful WebSocket room hosted on Cloudflare Workers via [PartyKit](https://partykit.io). It holds a single room per shared document, tracks which connections are sharers, verifies Ed25519 signatures on every push, and broadcasts verified updates to all connected clients. It also serves the browser viewer as a static HTML page.
+
+The relay does not persist data. Rooms exist only while connections are active. When the last client disconnects, the room state is lost.
 
 | Component | Code | Runtime | Crypto |
 |-----------|------|---------|--------|
@@ -25,128 +32,123 @@ Three components. All communication is via WebSocket. The relay is stateful per 
 
 ## Journeys
 
-### Journey 1: Share (CLI → Web)
+### Journey 1: Share (CLI to Web)
 
 The sharer runs `livedown share ./file.md`. A viewer opens the URL in a browser.
 
 ```
-  Terminal                           Cloud                         Browser
+  Terminal                           Relay                         Browser
   ────────                           ─────                         ───────
 
   $ livedown share ./file.md
   │
-  │ generate Ed25519 keypair
-  │ print "Watching ./file.md"
-  │ print "Connecting..."
+  1. Generate Ed25519 keypair
   │
-  │ startWatcher()
-  │         │
-  │         │──── WebSocket ────────▶ Relay
-  │         │                         │ onConnect
-  │         │◀──── init ──────────────│
-  │         │                         │
-  │         │──── set-token ─────────▶│
-  │         │     { publicKey }       │ sharers.add(conn)
-  │         │◀──── sharer-ack ───────│
-  │         │                         │
-  │         │──── push ──────────────▶│
-  │         │     { content,          │ verify sig ✓
-  │         │       signature }       │ store content
-  │         │                         │
-  │◀── ready                          │
-  │                                   │
-  │ print "Join  https://.../#abc"    │
-  │ print "Edit key  f7a2c9e1..."     │
-  │ print "o open  c copy  q quit"    │
-  │                                   │
-  │                                   │         User opens URL
-  │                                   │◀──────── WebSocket ────────── │
-  │                                   │ onConnect                     │
-  │                                   │──────── init ────────────────▶│
-  │                                   │  hasSharer: true              │
-  │                                   │  content: "..."               │
-  │                                   │  publicKey: X                 │
-  │                                   │                            ✓ Live
-  │                                   │                            Content
-  │                                   │                            renders
+  2. Connect to relay
+  │         │──── WebSocket ────────▶│
+  │         │◀──── init ─────────────│
+  │         │                        │
+  3. Register as sharer
+  │         │──── set-token ────────▶│
+  │         │     { publicKey }      │ sharers.add(conn)
+  │         │◀──── sharer-ack ──────│
+  │         │                        │
+  4. Push initial content
+  │         │──── push ─────────────▶│
+  │         │     { content, sig }   │ verify sig, store content
+  │         │                        │
+  5. Show join info
+  │                                  │
+  │  Watching  ./file.md             │
+  │  Join      https://.../#abc      │
+  │  Edit key  f7a2c9e1...           │
+  │  o open  c copy key  q quit     │
+  │                                  │
+  │                                  │         6. Viewer opens URL
+  │                                  │◀──────── WebSocket ──────────│
+  │                                  │──────── init ───────────────▶│
+  │                                  │  hasSharer: true             │
+  │                                  │  content: "..."              │
+  │                                  │  publicKey: X                │
+  │                                  │                           7. Live
+  │                                  │                           Content renders
+  │                                  │                           Editor is read-only
 ```
 
-**Key property:** the Join URL is never printed before the relay confirms the sharer is registered (`sharer-ack`). The viewer can never arrive at an empty room via a freshly printed URL.
+1. **Generate keypair** - the CLI creates an Ed25519 keypair. The private key seed (64 hex chars) is the "edit key" shared with trusted editors. The public key goes to the relay.
+2. **Connect** - the watcher opens a WebSocket to the relay. The relay assigns a guest ID and sends an `init` message.
+3. **Register** - the watcher sends `set-token` with the public key. The relay adds the connection to its `sharers` set and replies with `sharer-ack`.
+4. **Push** - the watcher reads the local file, signs the content, and pushes it. The relay verifies the signature and stores the content.
+5. **Show join info** - the CLI only prints the join URL and edit key *after* receiving `sharer-ack`. The URL is never visible before the room is established.
+6. **Viewer connects** - the browser opens a WebSocket. The relay sends `init` with `hasSharer: true` and the current content.
+7. **Live** - the browser renders the content. The editor is read-only until the viewer enters an edit key.
 
-### Journey 2: Edit Live (CLI → Web ← Edit Online)
+### Journey 2: Edit live (CLI to Web, edit online)
 
-A viewer with the edit key makes changes in the browser. The sharer's local file is updated.
+A viewer with the edit key makes changes in the browser. The sharer's local file updates.
 
 ```
-  Terminal               Cloud                    Browser
+  Terminal               Relay                    Browser
   ────────               ─────                    ───────
 
   (watching ./file.md)    (room live)              (viewing, read-only)
   │                       │                        │
-  │                       │                        │ User clicks
-  │                       │                        │ "Enter Edit Key"
+  │                       │                        1. Enter edit key
+  │                       │                        │  (64 hex chars)
   │                       │                        │
-  │                       │                        │ Pastes edit key
-  │                       │                        │ (64 hex chars)
+  │                       │                        2. Browser derives keypair,
+  │                       │                        │  verifies public key
+  │                       │                        │  matches room
   │                       │                        │
-  │                       │                        │ Browser derives
-  │                       │                        │ keypair from seed,
-  │                       │                        │ verifies public key
-  │                       │                        │ matches room's
+  │                       │                        │  Editor unlocked
   │                       │                        │
-  │                       │                        │ ✓ Editor unlocked
-  │                       │                        │
-  │                       │                        │ User types in
-  │                       │                        │ CodeMirror editor
-  │                       │                        │ (400ms debounce)
+  │                       │                        3. User types in editor
+  │                       │                        │  (400ms debounce)
   │                       │                        │
   │                       │◀──── push ─────────────│
-  │                       │  { content: "new text", │
-  │                       │    signature: "abc..." } │
+  │                       │  { content, signature } │
   │                       │                        │
-  │                       │ verify sig ✓           │
-  │                       │ store content          │
+  │                       4. Relay verifies sig
   │                       │                        │
-  │                       │──── update ───────────▶│ (other viewers)
-  │◀──── update ──────────│  { content, sig }      │
-  │  { content,           │                        │
-  │    signature }        │                        │
+  │◀──── update ──────────│──── update ───────────▶│ (other viewers)
+  │  { content, sig }     │                        │
   │                       │                        │
-  │ verify sig ✓          │                        │
-  │ write to ./file.md    │                        │
+  5. Watcher verifies sig │                        │
+  │  write to ./file.md   │                        │
   │                       │                        │
   │  dave  new text...    │                        │
   │                       │                        │
 
   Wrong key? ──────────────────────────────────────│
   │                       │◀──── push (bad sig) ───│
-  │                       │ verify sig ✗           │
+  │                       │ verify sig fails       │
   │                       │──── auth-error ───────▶│ Modal shows error
-  │  ✗ Guest 3 — rejected │──── auth-rejected ────▶│ (other viewers)
+  │  x Guest 3 - rejected │──── auth-rejected ────▶│ (other viewers)
 ```
 
-**Three verification points:** the relay verifies before broadcasting, the watcher verifies before writing to disk, and the browser verifies the public key on entry. Even a compromised relay cannot forge updates that the watcher accepts.
+1. **Enter edit key** - the viewer clicks "Enter Edit Key" in the status bar and pastes the 64-character hex key.
+2. **Verify locally** - the browser derives the Ed25519 keypair from the seed and checks that the derived public key matches the room's public key. Wrong keys are rejected immediately without hitting the relay.
+3. **Type** - the viewer types in the CodeMirror editor. After a 400ms debounce, the browser signs the content and sends a `push` message.
+4. **Relay verifies** - the relay checks the signature against the stored public key. Valid pushes are broadcast as `update` messages. Invalid pushes get `auth-error` back to the sender and `auth-rejected` broadcast to other connections (so the sharer's CLI can log them).
+5. **Watcher verifies** - the watcher independently verifies the signature before writing to disk. Even a compromised relay cannot forge updates that pass this check.
 
-### Journey 3: Share to Remote Machine (Future — In Progress)
+### Journey 3: Share to remote machine (future)
 
 Two people share a file across machines. One is the leader, the other joins and gets a local copy.
 
 ```
-  Machine A                Cloud                    Machine B
+  Machine A                Relay                    Machine B
   ─────────                ─────                    ─────────
 
   $ livedown share ./notes.md
   │                         │
-  │ (same as Journey 1)     │
-  │ ...                     │
-  │ print Join URL          │
-  │ print Edit key          │
+  1-5. (same as Journey 1)  │
   │                         │
-  │ Share URL + edit key    │                        │
-  │ with Machine B          │                        │
-  │ (via Slack, email...)   │                        │
-  │                         │                        │
-  │                         │            $ livedown join <url>
+  │  Join URL + edit key    │
+  │  shared out-of-band    │
+  │  (Slack, email, etc.)   │
+  │                         │
+  │                         │         6. $ livedown join <url>
   │                         │                --edit-key <key>
   │                         │                        │
   │                         │◀─── WebSocket ─────────│
@@ -157,39 +159,37 @@ Two people share a file across machines. One is the leader, the other joins and 
   │                         │  sharers.add(B)        │
   │                         │──── sharer-ack ───────▶│
   │                         │                        │
-  │                         │                        │ write content to
-  │                         │                        │ ./local-notes.md
+  │                         │                     7. Write content to
+  │                         │                        ./local-notes.md
+  │                         │                        Watch local file
   │                         │                        │
-  │                         │                        │ watch local file
-  │                         │                        │
-  │ User A edits            │                        │
-  │ ./notes.md              │                        │
-  │                         │                        │
+  8. User A edits locally   │                        │
   │──── push ──────────────▶│                        │
-  │                         │ verify ✓               │
+  │                         │ verify, broadcast      │
   │                         │──── update ───────────▶│
-  │                         │                        │ verify ✓
-  │                         │                        │ write to local file
+  │                         │                        │ verify, write
   │                         │                        │
-  │                         │               User B edits
-  │                         │               ./local-notes.md
+  │                         │               9. User B edits locally
   │                         │                        │
   │                         │◀──── push ─────────────│
-  │                         │ verify ✓               │
-  │◀──── update ────────────│                        │
-  │ verify ✓                │                        │
-  │ write to ./notes.md     │                        │
+  │◀──── update ────────────│ verify, broadcast      │
+  │ verify, write           │                        │
   │                         │                        │
-  │ Both machines in sync   │    Both machines in sync
+  │  Both machines in sync  │     Both machines in sync
 ```
 
-**Status:** not yet implemented. Requires a `livedown join` command that downloads content, creates a local file, and starts a watcher in the reverse direction. The `sharers: Set` in the relay already supports multiple sharers — no relay changes needed.
+6. **Join** - Machine B runs `livedown join` with the URL and edit key. It connects to the relay, receives the current content, and registers as a second sharer.
+7. **Create local copy** - the joiner writes the received content to a local file and starts watching it for changes.
+8. **Edits flow A to B** - when User A edits their local file, the watcher pushes signed content. The relay verifies and broadcasts. Machine B's watcher verifies and writes to its local file.
+9. **Edits flow B to A** - the reverse. Both machines stay in sync via the relay.
 
-## Browser State Machine
+**Status:** not yet implemented. Requires a `livedown join` command. The relay already supports multiple sharers via its `sharers: Set` - no relay changes needed.
+
+## Browser state machine
 
 ```
             ┌────────────┐
-            │  Loading   │   spinner visible, ws connecting
+            │  Loading   │   spinner, ws connecting
             └─────┬──────┘
                   │ init arrives
                   │
@@ -198,67 +198,67 @@ Two people share a file across machines. One is the leader, the other joins and 
        hasSharer      hasSharer
          true           false
            │             │
-           ▼             ▼
+           v             v
     ┌──────────┐   ┌───────────┐
     │   Live   │   │ NotFound  │
     └────┬─────┘   └─────┬─────┘
          │               │
          │sharer-gone    │sharer-here
          │               │
-         ▼               ▼
+         v               v
     ┌──────────┐   ┌──────────┐
-    │ Offline  │──▶│   Live   │
+    │ Offline  │-->│   Live   │
     └──────────┘   └──────────┘
-         ▲              │
+         ^              │
          │sharer-here   │sharer-gone
          └──────────────┘
 ```
 
-| State     | UI | Edits? |
-|-----------|----|--------|
-| Loading   | Spinner, "Connecting..." | No |
-| Live      | Editor + preview, status bar shows "live" | If edit key entered |
-| Offline   | Same UI, status bar shows "sharer offline", editor read-only | No |
-| NotFound  | Landing page, "no one is sharing this document" | No |
+| State | UI | Edits? |
+|-------|-----|--------|
+| Loading | Spinner, "Connecting..." | No |
+| Live | Editor + preview, status bar shows "live" | If edit key entered |
+| Offline | Same UI, status bar shows "sharer offline", editor read-only | No |
+| NotFound | Landing page, "no one is sharing this document" | No |
 
 **Rule:** NotFound is only reachable from Loading. Once Live, the viewer can only go to Offline (recoverable), never back to the landing page.
 
-## Message Types
+## Message types
 
-### Client → Relay
+### Client to Relay
 
 | Type | Fields | Sent by |
 |------|--------|---------|
 | `set-token` | `publicKey` | Sharer (on connect) |
 | `push` | `content`, `signature`, `meta` | Sharer or unlocked viewer |
 
-### Relay → Sender only
+### Relay to sender only
 
 | Type | Purpose |
 |------|---------|
-| `sharer-ack` | set-token accepted; CLI prints URL |
+| `sharer-ack` | set-token accepted; CLI shows join URL |
 | `auth-error` | push rejected (bad signature) |
 
-### Relay → All (broadcast)
+### Relay to all (broadcast)
 
 | Type | Fields | Purpose |
 |------|--------|---------|
 | `init` | `content`, `meta`, `guestId`, `hasSharer`, `protected`, `publicKey` | Sent to each connection on connect |
 | `update` | `content`, `meta`, `signature` | After a valid push |
 | `sharer-here` | `protected`, `publicKey` | Sharer joined an empty room |
-| `sharer-gone` | — | Last sharer disconnected |
+| `sharer-gone` | - | Last sharer disconnected |
 | `auth-rejected` | `editor` | Someone's push was rejected (info for sharer) |
 
 ## Security
 
 See [Security Principles](../.claude/agents/security.md) for the full set of rules.
 
-- **Ed25519 signing** — pushes are signed with the edit key (private), verified with the public key
-- **Defense in depth** — relay verifies before broadcasting; watcher verifies before writing to disk
-- **URLs are locators, not credentials** — the viewer URL is safe to share publicly
-- **No custom crypto** — tweetnacl (Node/browser) and @noble/curves (relay) only
+- **Ed25519 signing** - pushes are signed with the edit key (private), verified with the public key
+- **Defense in depth** - relay verifies before broadcasting; watcher verifies before writing to disk
+- **URLs are locators, not credentials** - the viewer URL is safe to share publicly
+- **No custom crypto** - tweetnacl (Node/browser) and @noble/curves (relay) only
 
-## What Must Stay in Sync
+## What must stay in sync
 
 Any PR that changes the protocol, message types, or state transitions must update:
 
