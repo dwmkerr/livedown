@@ -1,216 +1,267 @@
 # Livedown Architecture
 
-This document describes the components, connection flow, and state machines that govern how livedown shares a local file with remote viewers. It is the source of truth for the "how it works" story and must be kept up to date when the protocol, roles, or state transitions change.
+Livedown lets you share a local file and collaborate on it live — across browsers, terminals, and machines. You edit locally, everyone else sees it instantly.
 
-## Components
-
-```
-   ┌───────────────────┐        ┌───────────────────┐        ┌─────────────────┐
-   │                   │        │                   │        │                 │
-   │  CLI + Watcher    │        │   Relay (Party)   │        │  Browser Viewer │
-   │                   │        │                   │        │                 │
-   │  - Node.js        │        │  - Cloudflare     │        │  - Static HTML  │
-   │  - File I/O       │───────▶│    Worker         │◀───────│  - CodeMirror   │
-   │  - Signs pushes   │   WS   │  - Stateful room  │   WS   │  - tweetnacl    │
-   │  - Verifies       │        │  - Verifies sigs  │        │    (CDN)        │
-   │    incoming       │        │  - Tracks sharers │        │  - Verifies     │
-   │  - tweetnacl      │        │  - @noble/curves  │        │    public key   │
-   │                   │        │                   │        │    on unlock    │
-   └───────────────────┘        └───────────────────┘        └─────────────────┘
-```
-
-Three components, all talking WebSocket. The relay is stateful per room; everything else is stateless.
-
-## Roles
-
-A connection to the relay has one of two roles:
-
-| Role        | Becomes by...                              | Can push? |
-|-------------|--------------------------------------------|-----------|
-| **Sharer**  | Sending `set-token` with matching pubkey   | Yes       |
-| **Viewer**  | Just connecting                            | Only with edit key |
-
-The relay distinguishes roles via a `sharers: Set<string>` of connection IDs. When the last sharer disconnects, the relay broadcasts `sharer-gone` and the room becomes effectively empty (viewers can still view the last content, but no more pushes are possible until a new sharer arrives).
-
-## Connection flow (happy path)
+## Overview
 
 ```
-  CLI              Watcher            Relay                       Browser
-   │                 │                  │                            │
-   │ livedown share  │                  │                            │
-   │────────────────▶│                  │                            │
-   │ print "Watching ./file.md"         │                            │
-   │ print "Connecting..."              │                            │
-   │                 │                  │                            │
-   │                 │── WebSocket ────▶│                            │
-   │                 │                  │ onConnect                  │
-   │                 │                  │   guestId++                │
-   │                 │◀── init ─────────│                            │
-   │                 │                  │                            │
-   │                 │── set-token ────▶│                            │
-   │                 │   { publicKey }  │ sharers.add(conn.id)       │
-   │                 │                  │ publicKey = X              │
-   │                 │◀── sharer-ack ───│                            │
-   │                 │                  │                            │
-   │                 │── push ─────────▶│                            │
-   │                 │   { content,     │ verify signature OK        │
-   │                 │     signature }  │ latestContent = content    │
-   │                 │                  │                            │
-   │◀─── ready ──────│                  │                            │
-   │                 │                  │                            │
-   │ print "Join     https://.../#abc"  │                            │
-   │ print "Edit key ...(press c)..."   │                            │
-   │ print hint line                    │                            │
-   │                 │                  │                            │
-   │                                    │                            │
-   │                                    │◀── WebSocket ──────────────│
-   │                                    │ onConnect                  │
-   │                                    │   guestId++                │
-   │                                    │── init ───────────────────▶│
-   │                                    │   hasSharer: true          │
-   │                                    │   content: "..."           │
-   │                                    │   publicKey: X             │
-   │                                    │                          ✓ Live
+  ┌─────────┐              ┌─────────┐              ┌─────────┐
+  │  Local   │    signed    │  Relay  │   updates    │ Remote  │
+  │  File    │────pushes───▶│ (Cloud) │─────────────▶│ Viewers │
+  │          │◀──verified───│         │◀──signed─────│         │
+  └─────────┘   WebSocket   └─────────┘  WebSocket   └─────────┘
+     CLI                    PartyKit /                Browser or
+     watcher               Cloudflare                  another
+                             Workers                     CLI
 ```
 
-**Key property: the Join URL is never printed before the relay has acknowledged the sharer.** The user cannot see or share the URL until the room is fully established. This eliminates the race where a viewer arrives before the sharer.
+Three components. All communication is via WebSocket. The relay is stateful per room (tracks who's sharing, verifies signatures, broadcasts updates). Everything else is stateless.
 
-## Browser state machine
+| Component | Code | Runtime | Crypto |
+|-----------|------|---------|--------|
+| **CLI + Watcher** | `src/cli.ts`, `src/watcher.ts` | Node.js | tweetnacl |
+| **Relay** | `src/party/livedown.ts` | Cloudflare Workers (PartyKit) | @noble/curves |
+| **Browser Viewer** | `public/index.html` | Browser | tweetnacl (CDN) |
+
+## Journeys
+
+### Journey 1: Share (CLI → Web)
+
+The sharer runs `livedown share ./file.md`. A viewer opens the URL in a browser.
 
 ```
-               ┌────────────┐
-               │  Loading   │   initial state, websocket opening
-               └─────┬──────┘
-                     │ init arrives
-                     │
-              ┌──────┴──────┐
-              │             │
-          hasSharer?    hasSharer?
-             true          false
-              │             │
-              ▼             ▼
-       ┌──────────┐   ┌───────────┐
-       │   Live   │   │ NotFound  │
-       └────┬─────┘   └─────┬─────┘
-            │               │
-            │sharer-gone    │sharer-here
-            │               │
-            ▼               ▼
-       ┌──────────┐   ┌──────────┐
-       │ Offline  │──▶│   Live   │
-       └──────────┘   └──────────┘
-            ▲              │
-            │sharer-here   │sharer-gone
-            └──────────────┘
+  Terminal                           Cloud                         Browser
+  ────────                           ─────                         ───────
+
+  $ livedown share ./file.md
+  │
+  │ generate Ed25519 keypair
+  │ print "Watching ./file.md"
+  │ print "Connecting..."
+  │
+  │ startWatcher()
+  │         │
+  │         │──── WebSocket ────────▶ Relay
+  │         │                         │ onConnect
+  │         │◀──── init ──────────────│
+  │         │                         │
+  │         │──── set-token ─────────▶│
+  │         │     { publicKey }       │ sharers.add(conn)
+  │         │◀──── sharer-ack ───────│
+  │         │                         │
+  │         │──── push ──────────────▶│
+  │         │     { content,          │ verify sig ✓
+  │         │       signature }       │ store content
+  │         │                         │
+  │◀── ready                          │
+  │                                   │
+  │ print "Join  https://.../#abc"    │
+  │ print "Edit key  f7a2c9e1..."     │
+  │ print "o open  c copy  q quit"    │
+  │                                   │
+  │                                   │         User opens URL
+  │                                   │◀──────── WebSocket ────────── │
+  │                                   │ onConnect                     │
+  │                                   │──────── init ────────────────▶│
+  │                                   │  hasSharer: true              │
+  │                                   │  content: "..."               │
+  │                                   │  publicKey: X                 │
+  │                                   │                            ✓ Live
+  │                                   │                            Content
+  │                                   │                            renders
 ```
 
-### State descriptions
+**Key property:** the Join URL is never printed before the relay confirms the sharer is registered (`sharer-ack`). The viewer can never arrive at an empty room via a freshly printed URL.
 
-| State     | What the user sees                                                    | Edits allowed? |
-|-----------|-----------------------------------------------------------------------|----------------|
-| Loading   | Spinner, "Connecting..."                                              | No             |
-| Live      | Status bar, editor, preview, last known content                       | If unlocked    |
-| Offline   | Status bar with "sharer offline" indicator, editor in read-only mode, last known content still visible | No             |
-| NotFound  | Landing page with "not found — no one is sharing this document"       | No             |
+### Journey 2: Edit Live (CLI → Web ← Edit Online)
 
-### Transitions
+A viewer with the edit key makes changes in the browser. The sharer's local file is updated.
 
-| From      | Event                  | To        | Why |
-|-----------|------------------------|-----------|-----|
-| Loading   | `init hasSharer:true`  | Live      | Sharer was already registered |
-| Loading   | `init hasSharer:false` | NotFound  | First init, no sharer; ghost room |
-| NotFound  | `sharer-here`          | Live      | User started CLI after opening browser |
-| Live      | `sharer-gone`          | Offline   | Sharer disconnected (maybe temporarily) |
-| Live      | `init hasSharer:false` | Offline   | Viewer's own ws reconnected and sharer isn't there right now — *not* NotFound, because we've seen a sharer before |
-| Live      | `init hasSharer:true`  | Live      | Viewer's own ws reconnected, sharer still there |
-| Offline   | `sharer-here`          | Live      | Sharer reconnected (CLI restart, network blip) |
-| Offline   | `init hasSharer:true`  | Live      | Viewer's ws reconnected and sharer is already back |
+```
+  Terminal               Cloud                    Browser
+  ────────               ─────                    ───────
 
-**Rule: NotFound is only reachable from Loading.** Once a viewer has been Live, they can never return to NotFound — only to Offline. Transitioning back to the landing page after the user has been editing would discard their session and be a bad UX. The Offline state keeps content visible, disables editing, and recovers automatically when the sharer returns.
+  (watching ./file.md)    (room live)              (viewing, read-only)
+  │                       │                        │
+  │                       │                        │ User clicks
+  │                       │                        │ "Enter Edit Key"
+  │                       │                        │
+  │                       │                        │ Pastes edit key
+  │                       │                        │ (64 hex chars)
+  │                       │                        │
+  │                       │                        │ Browser derives
+  │                       │                        │ keypair from seed,
+  │                       │                        │ verifies public key
+  │                       │                        │ matches room's
+  │                       │                        │
+  │                       │                        │ ✓ Editor unlocked
+  │                       │                        │
+  │                       │                        │ User types in
+  │                       │                        │ CodeMirror editor
+  │                       │                        │ (400ms debounce)
+  │                       │                        │
+  │                       │◀──── push ─────────────│
+  │                       │  { content: "new text", │
+  │                       │    signature: "abc..." } │
+  │                       │                        │
+  │                       │ verify sig ✓           │
+  │                       │ store content          │
+  │                       │                        │
+  │                       │──── update ───────────▶│ (other viewers)
+  │◀──── update ──────────│  { content, sig }      │
+  │  { content,           │                        │
+  │    signature }        │                        │
+  │                       │                        │
+  │ verify sig ✓          │                        │
+  │ write to ./file.md    │                        │
+  │                       │                        │
+  │  dave  new text...    │                        │
+  │                       │                        │
 
-**No timeouts anywhere.** Every transition is triggered by an explicit relay message. The browser never guesses.
-
-## Why the old approach was broken
-
-The old code tried to infer presence from **content**:
-
-```js
-if (msg.content) gotContent = true;
-// ... 8 seconds later ...
-if (!gotContent) showNotFound();
+  Wrong key? ──────────────────────────────────────│
+  │                       │◀──── push (bad sig) ───│
+  │                       │ verify sig ✗           │
+  │                       │──── auth-error ───────▶│ Modal shows error
+  │  ✗ Guest 3 — rejected │──── auth-rejected ────▶│ (other viewers)
 ```
 
-This broke because:
-1. **Empty documents look identical to no-sharer rooms.** A new blank file is a perfectly valid thing to share.
-2. **Content is not a presence signal.** The relay can have a sharer without any content yet (initial push hasn't arrived).
-3. **Timeouts guess.** An 8-second wait is both too long (bad UX for genuine not-found) and too short (bad UX for slow networks).
+**Three verification points:** the relay verifies before broadcasting, the watcher verifies before writing to disk, and the browser verifies the public key on entry. Even a compromised relay cannot forge updates that the watcher accepts.
 
-The structural fix replaces content inference with explicit relay state:
-- Relay tracks sharers as a `Set<string>` of connection IDs
-- `init` message carries an authoritative `hasSharer: boolean` flag
-- `sharer-here` / `sharer-gone` broadcasts handle live transitions
+### Journey 3: Share to Remote Machine (Future — In Progress)
 
-## Message types
+Two people share a file across machines. One is the leader, the other joins and gets a local copy.
 
-### Sharer → Relay
+```
+  Machine A                Cloud                    Machine B
+  ─────────                ─────                    ─────────
+
+  $ livedown share ./notes.md
+  │                         │
+  │ (same as Journey 1)     │
+  │ ...                     │
+  │ print Join URL          │
+  │ print Edit key          │
+  │                         │
+  │ Share URL + edit key    │                        │
+  │ with Machine B          │                        │
+  │ (via Slack, email...)   │                        │
+  │                         │                        │
+  │                         │            $ livedown join <url>
+  │                         │                --edit-key <key>
+  │                         │                        │
+  │                         │◀─── WebSocket ─────────│
+  │                         │──── init ─────────────▶│
+  │                         │  content: "..."        │
+  │                         │                        │
+  │                         │◀─── set-token ─────────│
+  │                         │  sharers.add(B)        │
+  │                         │──── sharer-ack ───────▶│
+  │                         │                        │
+  │                         │                        │ write content to
+  │                         │                        │ ./local-notes.md
+  │                         │                        │
+  │                         │                        │ watch local file
+  │                         │                        │
+  │ User A edits            │                        │
+  │ ./notes.md              │                        │
+  │                         │                        │
+  │──── push ──────────────▶│                        │
+  │                         │ verify ✓               │
+  │                         │──── update ───────────▶│
+  │                         │                        │ verify ✓
+  │                         │                        │ write to local file
+  │                         │                        │
+  │                         │               User B edits
+  │                         │               ./local-notes.md
+  │                         │                        │
+  │                         │◀──── push ─────────────│
+  │                         │ verify ✓               │
+  │◀──── update ────────────│                        │
+  │ verify ✓                │                        │
+  │ write to ./notes.md     │                        │
+  │                         │                        │
+  │ Both machines in sync   │    Both machines in sync
+```
+
+**Status:** not yet implemented. Requires a `livedown join` command that downloads content, creates a local file, and starts a watcher in the reverse direction. The `sharers: Set` in the relay already supports multiple sharers — no relay changes needed.
+
+## Browser State Machine
+
+```
+            ┌────────────┐
+            │  Loading   │   spinner visible, ws connecting
+            └─────┬──────┘
+                  │ init arrives
+                  │
+           ┌──────┴──────┐
+           │             │
+       hasSharer      hasSharer
+         true           false
+           │             │
+           ▼             ▼
+    ┌──────────┐   ┌───────────┐
+    │   Live   │   │ NotFound  │
+    └────┬─────┘   └─────┬─────┘
+         │               │
+         │sharer-gone    │sharer-here
+         │               │
+         ▼               ▼
+    ┌──────────┐   ┌──────────┐
+    │ Offline  │──▶│   Live   │
+    └──────────┘   └──────────┘
+         ▲              │
+         │sharer-here   │sharer-gone
+         └──────────────┘
+```
+
+| State     | UI | Edits? |
+|-----------|----|--------|
+| Loading   | Spinner, "Connecting..." | No |
+| Live      | Editor + preview, status bar shows "live" | If edit key entered |
+| Offline   | Same UI, status bar shows "sharer offline", editor read-only | No |
+| NotFound  | Landing page, "no one is sharing this document" | No |
+
+**Rule:** NotFound is only reachable from Loading. Once Live, the viewer can only go to Offline (recoverable), never back to the landing page.
+
+## Message Types
+
+### Client → Relay
+
+| Type | Fields | Sent by |
+|------|--------|---------|
+| `set-token` | `publicKey` | Sharer (on connect) |
+| `push` | `content`, `signature`, `meta` | Sharer or unlocked viewer |
+
+### Relay → Sender only
+
+| Type | Purpose |
+|------|---------|
+| `sharer-ack` | set-token accepted; CLI prints URL |
+| `auth-error` | push rejected (bad signature) |
+
+### Relay → All (broadcast)
 
 | Type | Fields | Purpose |
 |------|--------|---------|
-| `set-token` | `publicKey` | Register as a sharer. Relay adds connection to `sharers` and stores the public key (first one wins; subsequent messages must match). |
-| `push` | `content`, `signature`, `meta` | Push new content. Signature must be valid against the stored public key. |
+| `init` | `content`, `meta`, `guestId`, `hasSharer`, `protected`, `publicKey` | Sent to each connection on connect |
+| `update` | `content`, `meta`, `signature` | After a valid push |
+| `sharer-here` | `protected`, `publicKey` | Sharer joined an empty room |
+| `sharer-gone` | — | Last sharer disconnected |
+| `auth-rejected` | `editor` | Someone's push was rejected (info for sharer) |
 
-### Relay → Sharer only
+## Security
 
-| Type | Fields | Purpose |
-|------|--------|---------|
-| `sharer-ack` | — | Confirms the `set-token` was accepted. CLI waits for this before printing the Join URL. |
-| `auth-error` | — | Your push was rejected (bad signature). |
+See [Security Principles](../.claude/agents/security.md) for the full set of rules.
 
-### Relay → Viewer broadcasts
+- **Ed25519 signing** — pushes are signed with the edit key (private), verified with the public key
+- **Defense in depth** — relay verifies before broadcasting; watcher verifies before writing to disk
+- **URLs are locators, not credentials** — the viewer URL is safe to share publicly
+- **No custom crypto** — tweetnacl (Node/browser) and @noble/curves (relay) only
 
-| Type | Fields | Purpose |
-|------|--------|---------|
-| `init` | `content`, `meta`, `guestId`, `hasSharer`, `protected`, `publicKey` | Sent once per connection, immediately on connect. |
-| `update` | `content`, `meta`, `signature` | Broadcast after a valid push. |
-| `sharer-here` | `protected`, `publicKey` | Broadcast when a sharer joins an empty room. Viewers in `NotFound` or `Offline` transition to `Live`. |
-| `sharer-gone` | — | Broadcast when the last sharer disconnects. Viewers in `Live` transition to `Offline`. |
-| `auth-rejected` | `editor` | Information for the sharer: someone else tried to push with a bad key. |
+## What Must Stay in Sync
 
-## Security model
+Any PR that changes the protocol, message types, or state transitions must update:
 
-See also [Security](../README.md#security) in the README.
-
-- **Ed25519 keypairs**: the CLI generates a 32-byte seed (the "edit key"). The public key is sent to the relay via `set-token`. The private key stays with the sharer and any authorized editors.
-- **Defense in depth**: the relay verifies signatures before broadcasting; the watcher verifies signatures before writing to disk. A compromised relay cannot forge updates.
-- **URLs are locators, not credentials**: the viewer URL is safe to share publicly. Editing requires the edit key, which is entered out-of-band (pasted into the browser modal or shared through a trusted channel).
-- **Never implement cryptographic code**: `tweetnacl` in Node and browser, `@noble/curves` in the relay (PartyKit bundler can't handle tweetnacl's optional `require('crypto')`). Both implement RFC 8032 Ed25519 and produce interchangeable signatures.
-
-## Edge cases
-
-### Viewer arrives before sharer
-Impossible in the happy path — the CLI doesn't print the URL until `sharer-ack` arrives. If the user saves the URL from a previous session and visits it, they land in `NotFound`. If they then start the CLI, they get `sharer-here` and transition to `Live`.
-
-### Sharer disconnects mid-session
-Relay calls `onClose`, removes from `sharers`, broadcasts `sharer-gone`. Viewers enter `Offline`. The editor becomes read-only but the last known content stays visible. When the CLI reconnects (manual restart or automatic reconnect loop), the new `set-token` triggers `sharer-here` and viewers return to `Live`.
-
-### CLI network blip (Wi-Fi dropped briefly)
-Watcher's WebSocket closes, reconnects after 2s. Relay sees disconnect → `sharer-gone`. Reconnect → new `set-token` → `sharer-here`. Viewers briefly see `Offline` then return to `Live`. Content is not lost; any edits made during the blip are pushed as soon as the connection is re-established.
-
-### Multiple sharers (future)
-Already supported by the `sharers: Set<string>`. Two CLIs can run against the same room (same public key) and both are counted as sharers. `hasSharer` stays true as long as at least one is connected.
-
-### Empty document
-`latestContent === ""` is valid. `hasSharer` is independent of content. The viewer enters `Live` with an empty editor.
-
-### Ghost rooms (old URL, no sharer)
-`init.hasSharer: false` immediately. Viewer goes straight to `NotFound`. No timeout involved.
-
-## What must be kept in sync with this document
-
-- `src/party/livedown.ts` — roles, message types, state transitions
-- `src/watcher.ts` — sharer connection lifecycle, `sharer-ack` handling
-- `src/cli.ts` — when the URL is printed (must be after ready)
-- `public/index.html` — browser state machine, message handling
-- `README.md` "How It Works" section — user-facing summary
-
-If you change any of these, update this document in the same PR.
+- This document (`docs/architecture.md`)
+- `README.md` "How It Works" section
+- `CLAUDE.md` architecture references
