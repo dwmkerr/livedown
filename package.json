@@ -14,8 +14,10 @@
     "start": "ts-node ./src/cli.ts",
     "lint": "eslint .",
     "lint:fix": "eslint --fix .",
-    "test": "jest --no-coverage",
-    "test:cov": "jest --coverage",
+    "test": "jest --no-coverage --testPathIgnorePatterns=integration",
+    "test:integration": "jest --no-coverage --forceExit --testPathPatterns=integration",
+    "test:all": "jest --no-coverage",
+    "test:cov": "jest --coverage --testPathIgnorePatterns=integration",
     "prepare": "husky"
   },
   "files": [
