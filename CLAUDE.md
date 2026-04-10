@@ -6,9 +6,18 @@ Livedown shares local markdown files live via WebSocket. Security is critical â€
 
 ## Architecture
 
-**Primary source of truth: [`docs/architecture.md`](docs/architecture.md).** It documents the component model, connection flow, browser state machine, and message types. **Keep it up to date** â€” any PR that changes the protocol, roles, state transitions, or message types must update it in the same PR.
+**Primary source of truth: [`docs/architecture.md`](docs/architecture.md).** It documents the overview diagram, journey flows, browser state machine, message types, and security model.
 
-README.md "How It Works" is the user-facing summary of the same information. Keep these in sync:
+**This documentation MUST be kept up to date.** Any PR that changes any of the following MUST update `docs/architecture.md` in the same PR:
+
+- Protocol or message types (new messages, changed fields)
+- Roles or connection lifecycle (how sharers/viewers register)
+- Browser state machine (new states, changed transitions)
+- Relay behavior (signature verification, broadcasting logic)
+- CLI output or startup sequence (handshake, keyboard shortcuts)
+- New journeys or major features
+
+README.md "How It Works" is the user-facing summary. Keep it in sync with the architecture doc:
 
 - The architecture diagram and component descriptions
 - The "Key Libraries" table (add/remove entries when dependencies change)

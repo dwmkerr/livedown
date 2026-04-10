@@ -2,6 +2,12 @@
 
 Livedown lets you share a local file and collaborate on it live - across browsers, terminals, IDEs, and machines. You edit locally, everyone else sees it instantly. Share a key and others can share and sync to their machines in real-time. Perfect for live collaboration on specs or designs, multi-person multi-agent live editing, connecting to GitHub to rapidly iterate on issue descriptions, pull requests and more.
 
+This page covers the essentials of how livedown works, and then some specific journeys:
+
+- [Sharing a local file to web](#journey-1-share-cli-to-web)
+- [Edit live, from local file to browser](#journey-2-edit-live-cli-to-web-edit-online)
+- [Sharing to a remote machine](#journey-3-share-to-remote-machine-future) - one file synchronised across machines with live collab
+
 ## Overview
 
 ```
@@ -11,23 +17,14 @@ Livedown lets you share a local file and collaborate on it live - across browser
                               └───────┬───────┘
                                       │ WebSocket
                                       │
-                            ┌─────────┴─────────┐
-                            │   Stateful Room   │
-   signed pushes            │   (Relay)         │            signed pushes
-  ┌────────────────────────▶│                   │◀────────────────────────┐
-  │            verified     │                   │     verified           │
-  │◀────────────────────────│                   │────────────────────────▶│
-  │                         └───────────────────┘                        │
-  │                              (PartyKit)                              │
-  │                                                                      │
-  ┌──────────────┐                                          ┌──────────────┐
-  │ CLI - Share  │                                          │ CLI - Join   │
-  │              │                                          │   (future)   │
-  │ (Local File) │                                          │ (Local File) │
-  └──────┬───────┘                                          └──────┬───────┘
-         │                                                         │
-  Editor (e.g. Vim)                                         Editor (e.g. Vim)
-  IDE (e.g. Cursor)                                         IDE (e.g. Cursor)
+  ┌──────────────┐          ┌─────────┴─────────┐          ┌──────────────┐
+  │  CLI - Share │  signed  │   Stateful Room   │  signed  │  CLI - Join  │
+  │              │──pushes─▶│                   │◀─pushes──│   (future)   │
+  │ (Local File) │◀verified─│       Relay       │─verified▶│ (Local File) │
+  └──────┬───────┘          └───────────────────┘          └──────┬───────┘
+         │                       (PartyKit)                       │
+         │                                                        │
+  Vim, Cursor, ...                                         Vim, Cursor, ...
 ```
 
 The relay is a stateful WebSocket room hosted on Cloudflare Workers via [PartyKit](https://partykit.io). It holds a single room per shared document, tracks which connections are sharers, verifies Ed25519 signatures on every push, and broadcasts verified updates to all connected clients. It also serves the browser viewer as a static HTML page.
@@ -39,6 +36,7 @@ The relay does not persist data. Rooms exist only while connections are active. 
 | **CLI + Watcher** | `src/cli.ts`, `src/watcher.ts` | Node.js | tweetnacl |
 | **Relay** | `src/party/livedown.ts` | Cloudflare Workers (PartyKit) | @noble/curves |
 | **Browser Viewer** | `public/index.html` | Browser | tweetnacl (CDN) |
+
 
 ## Journeys
 
