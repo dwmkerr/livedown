@@ -92,6 +92,16 @@
 # - Budget / token caps — not required now.
 # - Slack / Teams notifications on completion — deferred.
 # - PR assignment to issue opener — deferred; PR is linked via `Refs #<n>`.
+# - When the scaffold check fails, auto-open a PR with the openspec init
+#   output (`openspec/`, `.claude/`, .gitkeep files) instead of just
+#   commenting with manual instructions. The agent already runs in the
+#   workflow — we have everything needed to do this in one go.
+# - Make the scaffold check configurable. Today it hard-codes one skill
+#   path (`.claude/skills/openspec-explore/SKILL.md`) as a proxy for "is
+#   openspec installed". Better: env var like REQUIRED_SKILLS that takes
+#   a comma-separated list of skill ids the prompt actually invokes
+#   (e.g. `openspec-explore,openspec-new-change`), so projects can
+#   customise based on which skills their prompt depends on.
 #
 # -----------------------------------------------------------------------------
 # REQUIRED SECRETS
@@ -215,21 +225,25 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.AGENT_GITHUB_TOKEN || github.token }}
 
-      # Fail fast if the repo is not scaffolded with OpenSpec. The CLI is
-      # installed in the runner a couple of steps below, but `openspec new
-      # change` / `validate` need `openspec/config.yaml` + `openspec/specs/`
-      # to exist in the repo. Refuse up-front with copy-paste instructions.
-      - name: Verify OpenSpec scaffold present
+      # Fail fast if the repo is not scaffolded with OpenSpec. We check for
+      # one specific Claude skill (`openspec-explore`) as a proxy for "ran
+      # openspec init --tools claude": init creates both the openspec/
+      # scaffold and the .claude/ skill files in one shot, and skills are
+      # non-empty dirs so they always reach git (unlike empty openspec/
+      # subdirs which need .gitkeep). Also matches what the agent prompt
+      # actually invokes (e.g. `openspec:explore`). See FUTURE WORK for
+      # making this list configurable.
+      - name: Verify OpenSpec skills present
         if: steps.check.outputs.run == 'true'
         env:
           GH_TOKEN: ${{ secrets.AGENT_GITHUB_TOKEN || github.token }}
           REPO: ${{ github.repository }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
         run: |
-          if [ ! -f openspec/config.yaml ] || [ ! -d openspec/specs ] || [ ! -d openspec/changes ]; then
-            echo "::error::OpenSpec scaffold missing — expected openspec/config.yaml, openspec/specs/, openspec/changes/"
+          if [ ! -f .claude/skills/openspec-explore/SKILL.md ]; then
+            echo "::error::OpenSpec not installed — expected .claude/skills/openspec-explore/SKILL.md"
             {
-              echo "> OpenSpec Flow could not start: this repo is not scaffolded with OpenSpec."
+              echo "> OpenSpec Flow could not start: OpenSpec is not installed in this repo."
               echo ">"
               echo "> Run this locally on the default branch and commit the result:"
               echo "> \`\`\`bash"
