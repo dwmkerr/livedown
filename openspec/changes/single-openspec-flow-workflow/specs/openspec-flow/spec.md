@@ -1,15 +1,15 @@
 ## ADDED Requirements
 
 ### Requirement: Single workflow file owns the full OpenSpec lifecycle
-The system SHALL implement the complete OpenSpec automation lifecycle — propose and implement — within a single GitHub Actions workflow file (`openspec-flow.yaml`). No second workflow file SHALL be required for any lifecycle stage.
+The system SHALL implement the complete OpenSpec automation lifecycle — plan and implement — within a single GitHub Actions workflow file (`openspec-flow.yaml`). No second workflow file SHALL be required for any lifecycle stage.
 
-#### Scenario: Propose stage fires on issue assignment
+#### Scenario: Plan stage fires on issue assignment
 - **WHEN** a GitHub issue is assigned to the agent login or the `openspec:start` label is added
-- **THEN** the `propose` job runs and the `implement` job exits early with `run=false`
+- **THEN** the `plan` job runs and the `implement` job exits early with `run=false`
 
 #### Scenario: Implement stage fires on proposal PR merge
 - **WHEN** a PR whose head branch matches `spec/<n>-<slug>` is merged into main
-- **THEN** the `implement` job runs and the `propose` job exits early with `run=false`
+- **THEN** the `implement` job runs and the `plan` job exits early with `run=false`
 
 #### Scenario: Both jobs share a single env block
 - **WHEN** the workflow file is read
@@ -20,10 +20,10 @@ The system SHALL implement the complete OpenSpec automation lifecycle — propos
 - **THEN** `.github/workflows/openspec-flow-implement.yaml` SHALL not exist in the repository
 
 ### Requirement: No behaviour change from consolidation
-The propose and implement stages SHALL behave identically after consolidation — same trigger conditions, same label transitions, same agent prompts, same secrets handling, and same timeout values.
+The plan and implement stages SHALL behave identically after consolidation — same trigger conditions, same label transitions, same agent prompts, same secrets handling, and same timeout values.
 
-#### Scenario: Label lifecycle is preserved for propose stage
-- **WHEN** the propose job runs successfully
+#### Scenario: Label lifecycle is preserved for plan stage
+- **WHEN** the plan job runs successfully
 - **THEN** the issue transitions from `openspec:exploring` to `openspec:spec-ready`, matching the behaviour of the original `openspec-flow.yaml`
 
 #### Scenario: Label lifecycle is preserved for implement stage

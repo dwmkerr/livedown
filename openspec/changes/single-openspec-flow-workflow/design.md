@@ -2,7 +2,7 @@
 
 The repository currently has two GitHub Actions workflow files that together implement the full OpenSpec automation lifecycle:
 
-- `openspec-flow.yaml` — propose stage: triggered by issue assignment or `openspec:start` label; drives explore + build-spec; outputs a proposal PR.
+- `openspec-flow.yaml` — plan stage: triggered by issue assignment or `openspec:start` label; drives explore + build-spec; outputs a proposal PR.
 - `openspec-flow-implement.yaml` — implement stage: triggered when a `spec/**` PR merges into main; drives apply + verify + archive; outputs a code PR.
 
 Both files share a large block of identical setup steps (Node, OpenSpec CLI, claude-code-action clone, bun, dependency install) and nearly identical failure-handling steps. The shared env vars are duplicated. This makes the lifecycle harder to follow at a glance and creates a maintenance surface where a version bump (e.g. `CLAUDE_CODE_ACTION_REF`) must be applied in two places.
@@ -26,17 +26,17 @@ Both files share a large block of identical setup steps (Node, OpenSpec CLI, cla
 
 ### Single file, two jobs (not a composite action)
 
-**Decision**: Merge into one file with a `propose` job and an `implement` job. Do not extract shared steps into a composite action.
+**Decision**: Merge into one file with a `plan` job and an `implement` job. Do not extract shared steps into a composite action.
 
 **Rationale**: A composite action would require a new file in `.github/actions/` and another layer of indirection. The duplication is boilerplate (setup steps), not logic, and the two jobs' setup steps are already identical enough that they stay in sync trivially. One file with two jobs is the simplest thing that satisfies the issue.
 
 **Alternative considered**: Extract shared setup into `.github/actions/openspec-setup/action.yml`. Rejected for now because it adds a new file and an `uses:` indirection without meaningful benefit at the current scale. Can be revisited if a third stage is added.
 
-### Job naming: `propose` and `implement`
+### Job naming: `plan` and `implement`
 
-**Decision**: Rename the existing `openspec-flow` job to `propose` and name the new job `implement`.
+**Decision**: Rename the existing `openspec-flow` job to `plan` and name the new job `implement`.
 
-**Rationale**: Short, descriptive names that match the lifecycle stage names used in comments and the OpenSpec documentation. Avoids the redundant `openspec-flow-` prefix that was needed when the jobs lived in separate files.
+**Rationale**: Short, descriptive names that match the lifecycle stages (plan → implement → review). Avoids the redundant `openspec-flow-` prefix that was needed when the jobs lived in separate files.
 
 ### Top-level `env:` block
 
@@ -58,7 +58,7 @@ Both files share a large block of identical setup steps (Node, OpenSpec CLI, cla
 
 ## Risks / Trade-offs
 
-- **Cross-fire on wrong event type**: When a `pull_request` event fires, the `propose` job's trigger guard (`check-trigger`) will run and evaluate `EVENT_ACTION` as `closed` (not `assigned`/`labeled`), so it exits with `run=false`. Similarly the `implement` job guard exits `run=false` on `issues` events. This is the existing pattern and is correct — but it means every event fires both jobs' first step (the check). Overhead is negligible.
+- **Cross-fire on wrong event type**: When a `pull_request` event fires, the `plan` job's trigger guard (`check-trigger`) will run and evaluate `EVENT_ACTION` as `closed` (not `assigned`/`labeled`), so it exits with `run=false`. Similarly the `implement` job guard exits `run=false` on `issues` events. This is the existing pattern and is correct — but it means every event fires both jobs' first step (the check). Overhead is negligible.
 
   Mitigation: Keep the trigger-guard logic unchanged; it already handles this correctly.
 
@@ -71,7 +71,7 @@ Both files share a large block of identical setup steps (Node, OpenSpec CLI, cla
 ## Migration Plan
 
 1. Copy the full `openspec-flow-implement.yaml` job body into `openspec-flow.yaml` as job `implement`.
-2. Rename the existing job from `openspec-flow` to `propose`.
+2. Rename the existing job from `openspec-flow` to `plan`.
 3. Merge env var blocks; remove duplicates.
 4. Expand the `on:` block with the `pull_request` trigger.
 5. Verify both jobs' trigger guards still reference the correct env vars (all refs become top-level `env:` now).
