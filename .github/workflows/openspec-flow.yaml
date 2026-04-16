@@ -1,0 +1,369 @@
+# =============================================================================
+# OpenSpec Flow
+# =============================================================================
+# Drop-in workflow that turns an assigned GitHub issue into an OpenSpec
+# proposal PR by driving Claude Code through the canonical OpenSpec flow
+# (stages 1-2: explore, build spec).
+#
+# Self-contained. Installs the OpenSpec CLI into the runner; fails fast if
+# the install breaks. The repo itself does NOT need OpenSpec installed.
+#
+# Attribution:
+#   - https://github.com/anthropics/claude-code-action (cloned at runtime)
+#   - https://github.com/Fission-AI/OpenSpec           (methodology + CLI)
+#   - https://github.com/dwmkerr/agent-actions         (trigger / access pattern)
+#
+# -----------------------------------------------------------------------------
+# NUMBERED OPERATIONS (issue step -> workflow step -> label -> OpenSpec action -> sub-agent)
+# -----------------------------------------------------------------------------
+# 1. Issue assigned to agent        -> check-trigger         -> (none)               -> none              -> none
+# 2. Trigger matches, run starts    -> react + add label     -> openspec:exploring   -> (none yet)        -> none
+# 3. Runtime prepared               -> install-openspec-cli  -> openspec:exploring   -> CLI ready         -> none
+# 4. Runtime prepared               -> vendor-claude-code    -> openspec:exploring   -> (none yet)        -> none
+# 5. EXPLORE stage                  -> run-agent (stage 1)   -> openspec:exploring   -> explore           -> ${SUBAGENT_NAME}
+# 6. BUILD SPEC stage               -> run-agent (stage 2)   -> openspec:exploring   -> new + propose + validate -> ${SUBAGENT_NAME}
+# 7. PR opened                      -> flip-label-success    -> openspec:spec-ready  -> (handoff)         -> none
+# 8. Any stage failed               -> flip-label-failure    -> openspec:failed      -> (halt)            -> none
+#
+# Later stages (NOT in this slice — see FUTURE WORK):
+#   - `apply`   — implement the proposal (stage 3)
+#   - `verify`  — check implementation matches spec
+#   - `archive` — `openspec archive <name>` (stage 4)
+#
+# -----------------------------------------------------------------------------
+# LABELS (create in repo settings before first run)
+# -----------------------------------------------------------------------------
+#   openspec:exploring   — agent picked up the issue, exploring + drafting
+#   openspec:spec-ready  — proposal PR opened, awaiting human review
+#   openspec:failed      — agent run failed; see logs / issue comment
+#
+# Clear any of these to allow a re-run (idempotency guard).
+#
+# -----------------------------------------------------------------------------
+# SUB-AGENT
+# -----------------------------------------------------------------------------
+# The prompt tells Claude Code to delegate to a sub-agent named by
+# SUBAGENT_NAME (default: `openspec-flow-agent`). That is the ONE name used
+# across explore + build-spec stages. Override the env var to route to a
+# different sub-agent you define in `.claude/agents/`.
+#
+# Set SUBAGENT_NAME to an empty string to let Claude pick a generic sub-agent.
+#
+# -----------------------------------------------------------------------------
+# OPENSPEC CLI
+# -----------------------------------------------------------------------------
+# `@fission-ai/openspec` is installed globally in the runner. Fails fast if
+# install/version check fails — we will not silently degrade. The agent is
+# instructed to use:
+#   - `openspec new change <name>`                              (scaffold folder)
+#   - `openspec instructions proposal --change <name> --json`   (authoritative template)
+#   - `openspec validate <name> --type change --strict --json`  (must pass before PR)
+#
+# No `openspec init` is run — the repo is already scaffolded at `openspec/`,
+# and running init would write files that clash with the proposal branch.
+#
+# The agent also leans on repo skills when available:
+#   - `.claude/skills/research`        — evidence gathering
+#   - `.claude/skills/architecture`    — design alignment
+#   - `.claude/skills/issue-creation`  — structured issue analysis
+# Plus superpowers skills if available: `brainstorming`, `writing-plans`.
+#
+# -----------------------------------------------------------------------------
+# AGENT IDENTITY (configurable)
+# -----------------------------------------------------------------------------
+# AGENT_ASSIGNEE — GitHub login to watch for. Default: `dwmkerr-arcbot`.
+# Swap for a dedicated bot login by changing the env value.
+#
+# -----------------------------------------------------------------------------
+# CONFIGURABLE KNOBS
+# -----------------------------------------------------------------------------
+#   AGENT_ASSIGNEE           — login that triggers the workflow
+#   SUBAGENT_NAME            — sub-agent name the prompt delegates to
+#   CLAUDE_CODE_ACTION_REF   — pinned tag of anthropics/claude-code-action
+#   OPENSPEC_CLI_VERSION     — pinned version of @fission-ai/openspec
+#   LABEL_EXPLORING / READY / FAILED — label names (override to match your repo)
+#
+# -----------------------------------------------------------------------------
+# OPEN QUESTIONS / FUTURE WORK
+# -----------------------------------------------------------------------------
+# - Stage-3 `apply` workflow on spec merge (implement the proposal).
+# - Stage-4 auto-archive once tasks check out green (`openspec archive`).
+# - Reassign / unassign handling — currently a no-op.
+# - Budget / token caps — not required now.
+# - Slack / Teams notifications on completion — deferred.
+# - PR assignment to issue opener — deferred; PR is linked via `Refs #<n>`.
+#
+# -----------------------------------------------------------------------------
+# REQUIRED SECRETS
+# -----------------------------------------------------------------------------
+#   ANTHROPIC_API_KEY      — Anthropic API key for Claude Code
+#
+# OPTIONAL SECRETS
+#   AGENT_GITHUB_TOKEN     — PAT for the agent bot identity. Falls back to
+#                            github.token (github-actions[bot]) if unset.
+
+name: OpenSpec Flow
+
+on:
+  issues:
+    types: [assigned]
+
+env:
+  AGENT_ASSIGNEE: "dwmkerr"
+  SUBAGENT_NAME: "openspec-flow-agent"
+  CLAUDE_CODE_ACTION_REF: "v1.0.79"
+  OPENSPEC_CLI_VERSION: "latest"
+  LABEL_EXPLORING: "openspec:exploring"
+  LABEL_READY: "openspec:spec-ready"
+  LABEL_FAILED: "openspec:failed"
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  actions: read
+  id-token: write
+
+concurrency:
+  group: openspec-flow-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  openspec-flow:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Check trigger (assignee + idempotency)
+        id: check
+        env:
+          ASSIGNEE_LOGIN: ${{ github.event.assignee.login }}
+          ISSUE_LABELS: ${{ join(github.event.issue.labels.*.name, ',') }}
+        run: |
+          if [ "$ASSIGNEE_LOGIN" != "$AGENT_ASSIGNEE" ]; then
+            echo "Assignee '$ASSIGNEE_LOGIN' != AGENT_ASSIGNEE '$AGENT_ASSIGNEE' — skipping"
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Skip if any openspec:* lifecycle label is already set. Clear them manually to re-run.
+          if echo ",$ISSUE_LABELS," | grep -qE ",(${LABEL_EXPLORING}|${LABEL_READY}|${LABEL_FAILED}),"; then
+            echo "Issue already labelled with an openspec:* state — skipping"
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "run=true" >> "$GITHUB_OUTPUT"
+
+      # Fail fast if any of the three lifecycle labels are missing from the repo.
+      # `gh issue edit --add-label` fails late and leaves the issue in an
+      # inconsistent state (reaction added, no label). Better to refuse up-front
+      # and tell the maintainer exactly how to create them.
+      - name: Verify required labels exist
+        if: steps.check.outputs.run == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.AGENT_GITHUB_TOKEN || github.token }}
+          REPO: ${{ github.repository }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          missing=()
+          for label in "$LABEL_EXPLORING" "$LABEL_READY" "$LABEL_FAILED"; do
+            if ! gh label list --repo "$REPO" --search "$label" --json name \
+                --jq '.[].name' | grep -Fxq "$label"; then
+              missing+=("$label")
+            fi
+          done
+
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "::error::Missing required labels: ${missing[*]}"
+            {
+              echo "> OpenSpec Flow could not start: the following labels are missing from this repo:"
+              echo ">"
+              for label in "${missing[@]}"; do
+                echo "> - \`$label\`"
+              done
+              echo ">"
+              echo "> Create them with:"
+              echo "> \`\`\`bash"
+              echo "> gh label create 'openspec:exploring'  --repo $REPO --color FBCA04 --description 'OpenSpec Flow: agent is exploring the issue and drafting a proposal'"
+              echo "> gh label create 'openspec:spec-ready' --repo $REPO --color 0E8A16 --description 'OpenSpec Flow: proposal PR opened, awaiting human review'"
+              echo "> gh label create 'openspec:failed'     --repo $REPO --color B60205 --description 'OpenSpec Flow: agent run failed; see workflow logs'"
+              echo "> \`\`\`"
+              echo ">"
+              echo "> Then unassign and re-assign the issue to re-trigger the workflow."
+            } > /tmp/comment.md
+            gh issue comment "$ISSUE_NUMBER" --repo "$REPO" --body-file /tmp/comment.md
+            exit 1
+          fi
+
+      - name: React and add label openspec:exploring
+        if: steps.check.outputs.run == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.AGENT_GITHUB_TOKEN || github.token }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          gh api -X POST "repos/$REPO/issues/$ISSUE_NUMBER/reactions" \
+            -f content="eyes" >/dev/null || true
+          gh issue edit "$ISSUE_NUMBER" --repo "$REPO" --add-label "$LABEL_EXPLORING"
+
+      # Full clone — the claude-code-action entrypoint fetches branches for diffs.
+      - name: Checkout repository
+        if: steps.check.outputs.run == 'true'
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.AGENT_GITHUB_TOKEN || github.token }}
+
+      # Fail fast if the repo is not scaffolded with OpenSpec. The CLI is
+      # installed in the runner a couple of steps below, but `openspec new
+      # change` / `validate` need `openspec/config.yaml` + `openspec/specs/`
+      # to exist in the repo. Refuse up-front with copy-paste instructions.
+      - name: Verify OpenSpec scaffold present
+        if: steps.check.outputs.run == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.AGENT_GITHUB_TOKEN || github.token }}
+          REPO: ${{ github.repository }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          if [ ! -f openspec/config.yaml ] || [ ! -d openspec/specs ] || [ ! -d openspec/changes ]; then
+            echo "::error::OpenSpec scaffold missing — expected openspec/config.yaml, openspec/specs/, openspec/changes/"
+            {
+              echo "> OpenSpec Flow could not start: this repo is not scaffolded with OpenSpec."
+              echo ">"
+              echo "> Run this locally on the default branch and commit the result:"
+              echo "> \`\`\`bash"
+              echo "> npm install -g @fission-ai/openspec"
+              echo "> openspec init --tools claude"
+              echo "> git add openspec .claude"
+              echo "> git commit -m 'chore: scaffold openspec'"
+              echo "> git push"
+              echo "> \`\`\`"
+              echo ">"
+              echo "> Then unassign and re-assign the issue to re-trigger the workflow."
+            } > /tmp/comment.md
+            gh issue comment "$ISSUE_NUMBER" --repo "$REPO" --body-file /tmp/comment.md
+            # Best-effort: flip the in-progress label off so the issue is not stuck.
+            gh issue edit "$ISSUE_NUMBER" --repo "$REPO" \
+              --remove-label "$LABEL_EXPLORING" \
+              --add-label "$LABEL_FAILED" || true
+            exit 1
+          fi
+
+      - name: Setup Node.js
+        if: steps.check.outputs.run == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      # Install OpenSpec CLI globally. Fail fast if install or --version check fails
+      # — we do not want to run the agent without the CLI available.
+      - name: Install OpenSpec CLI
+        if: steps.check.outputs.run == 'true'
+        run: |
+          npm install -g "@fission-ai/openspec@${OPENSPEC_CLI_VERSION}"
+          openspec --version
+
+      - name: Clone claude-code-action
+        if: steps.check.outputs.run == 'true'
+        run: |
+          git clone --depth 1 --branch "$CLAUDE_CODE_ACTION_REF" \
+            https://github.com/anthropics/claude-code-action.git \
+            /tmp/claude-code-action
+
+      - name: Install bun
+        if: steps.check.outputs.run == 'true'
+        run: curl -fsSL https://bun.sh/install | bash && echo "$HOME/.bun/bin" >> "$GITHUB_PATH"
+
+      - name: Install claude-code-action dependencies
+        if: steps.check.outputs.run == 'true'
+        run: cd /tmp/claude-code-action && bun install --production
+
+      # Two-stage prompt: EXPLORE then BUILD SPEC. Delegates to the sub-agent
+      # named by SUBAGENT_NAME. Generic OpenSpec template is fetched at
+      # runtime via `openspec instructions proposal`, so this workflow stays
+      # aligned with the upstream schema.
+      - name: Run OpenSpec Flow agent
+        if: steps.check.outputs.run == 'true'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.AGENT_GITHUB_TOKEN || github.token }}
+          OVERRIDE_GITHUB_TOKEN: ${{ secrets.AGENT_GITHUB_TOKEN }}
+          INPUT_ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          INPUT_PROMPT: |
+            Use a sub-agent called `${{ env.SUBAGENT_NAME }}` for this task
+            (or a generic sub-agent if that name is empty or not defined).
+            Drive issue #${{ github.event.issue.number }} in ${{ github.repository }}
+            through the OpenSpec flow (stages 1-2: explore, build spec).
+            Title: "${{ github.event.issue.title }}"
+
+            OBJECTIVE
+            Produce an OpenSpec proposal PR that a human can review and merge.
+            Do NOT implement code changes outside the proposal folder. Later
+            stages (apply, verify, archive) are handled by separate workflows.
+
+            STAGE 1 — EXPLORE
+            1. Read the issue body, linked issues, and any referenced code paths.
+            2. Use repo skills where relevant:
+                 - .claude/skills/research       (evidence gathering)
+                 - .claude/skills/architecture   (design alignment)
+                 - .claude/skills/issue-creation (structured issue analysis)
+               And superpowers skills if available:
+                 - superpowers:brainstorming
+                 - superpowers:writing-plans
+            3. Read `openspec/config.yaml` and scan `openspec/specs/` so the
+               proposal references real capabilities. Scan
+               `openspec/changes/archive/` for prior art on similar topics.
+
+            STAGE 2 — BUILD SPEC
+            4. Derive a slug from the issue title (kebab-case, <= 40 chars).
+            5. Scaffold the change folder using the OpenSpec CLI:
+                   openspec new change "<YYYY-MM-DD>-<slug>"
+            6. Fetch the authoritative proposal template from the CLI:
+                   openspec instructions proposal --change "<name>" --json
+               Use those instructions as the source of truth for section names
+               and content. The generic OpenSpec schema uses:
+                 ## Why, ## What Changes, ## Capabilities, ## Impact.
+            7. Write `openspec/changes/<name>/proposal.md` per those instructions.
+            8. Validate before committing:
+                   openspec validate "<name>" --type change --strict --json
+               Must exit 0. Fix the proposal and re-validate on failure.
+            9. Commit on a new branch `spec/<issue-number>-<slug>`.
+            10. Open a PR titled:
+                  `chore: propose specification for #${{ github.event.issue.number }} <short title>`
+                Body must include `Refs #${{ github.event.issue.number }}`.
+                Do NOT assign the PR — `Refs` is enough.
+            11. Post one comment on the issue linking the PR.
+
+            CONSTRAINTS
+            - No changes outside the new `openspec/changes/<name>/` folder.
+            - Conventional commit PR title required (starts with `chore:`).
+            - Follow the project's writing style from CLAUDE.md (if present):
+              direct, no embellishment, active voice.
+          GITHUB_ACTION_PATH: /tmp/claude-code-action
+        run: bun run /tmp/claude-code-action/src/entrypoints/run.ts
+
+      - name: Flip label to openspec:spec-ready
+        if: success() && steps.check.outputs.run == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.AGENT_GITHUB_TOKEN || github.token }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          gh issue edit "$ISSUE_NUMBER" --repo "$REPO" \
+            --remove-label "$LABEL_EXPLORING" \
+            --add-label "$LABEL_READY"
+
+      - name: Handle failure (flip label + comment)
+        if: failure() && steps.check.outputs.run == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.AGENT_GITHUB_TOKEN || github.token }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          RUN_URL="${{ github.server_url }}/$REPO/actions/runs/${{ github.run_id }}"
+          gh issue edit "$ISSUE_NUMBER" --repo "$REPO" \
+            --remove-label "$LABEL_EXPLORING" \
+            --add-label "$LABEL_FAILED" || true
+          gh api "repos/$REPO/issues/$ISSUE_NUMBER/comments" \
+            -f body="> OpenSpec Flow failed. [View logs]($RUN_URL)"
