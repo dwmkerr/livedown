@@ -8,3 +8,4 @@ scratch/
 .playwright-mcp/
 coverage/
 .worktrees/
+scheduled_tasks.lock
