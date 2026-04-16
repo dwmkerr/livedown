@@ -50,23 +50,23 @@
 # Set SUBAGENT_NAME to an empty string to let Claude pick a generic sub-agent.
 #
 # -----------------------------------------------------------------------------
-# OPENSPEC CLI
+# OPENSPEC INTEGRATION
 # -----------------------------------------------------------------------------
-# `@fission-ai/openspec` is installed globally in the runner. Fails fast if
-# install/version check fails — we will not silently degrade. The agent is
-# instructed to use:
-#   - `openspec new change <name>`                              (scaffold folder)
-#   - `openspec instructions proposal --change <name> --json`   (authoritative template)
-#   - `openspec validate <name> --type change --strict --json`  (must pass before PR)
+# `@fission-ai/openspec` is installed globally in the runner so the OpenSpec
+# skills can call `openspec` as a CLI. Install fails fast — we will not
+# silently degrade.
 #
-# No `openspec init` is run — the repo is already scaffolded at `openspec/`,
-# and running init would write files that clash with the proposal branch.
+# We DO NOT spell out OpenSpec mechanics in the prompt. The repo's
+# `.claude/skills/openspec-*` skills (installed by `openspec init --tools
+# claude`) already encode HOW the workflow operates. The prompt orchestrates:
+#   - `openspec-explore`    — think through the issue
+#   - `openspec-ff-change`  — scaffold a change + create every artifact in
+#                             one pass (proposal/design/tasks/...)
+# After the skill produces artifacts and `openspec validate --strict`
+# passes, the workflow handles the GitHub side (branch, PR, comment).
 #
-# The agent also leans on repo skills when available:
-#   - `.claude/skills/research`        — evidence gathering
-#   - `.claude/skills/architecture`    — design alignment
-#   - `.claude/skills/issue-creation`  — structured issue analysis
-# Plus superpowers skills if available: `brainstorming`, `writing-plans`.
+# No `openspec init` is run inside the workflow — the repo is already
+# scaffolded, and re-init would dirty the proposal branch.
 #
 # -----------------------------------------------------------------------------
 # AGENT IDENTITY (configurable)
@@ -322,55 +322,45 @@ jobs:
           OVERRIDE_GITHUB_TOKEN: ${{ secrets.AGENT_GITHUB_TOKEN }}
           GITHUB_ACTION_PATH: /tmp/claude-code-action
           PROMPT: |
-            Use a sub-agent called `${{ env.SUBAGENT_NAME }}` for this task
-            (or a generic sub-agent if that name is empty or not defined).
-            Drive issue #${{ github.event.issue.number }} in ${{ github.repository }}
-            through the OpenSpec flow (stages 1-2: explore, build spec).
-            Title: "${{ github.event.issue.title }}"
+            Drive issue #${{ github.event.issue.number }} in
+            ${{ github.repository }} to a draft OpenSpec proposal PR.
+            Issue title: "${{ github.event.issue.title }}"
 
-            OBJECTIVE
-            Produce an OpenSpec proposal PR that a human can review and merge.
-            Do NOT implement code changes outside the proposal folder. Later
-            stages (apply, verify, archive) are handled by separate workflows.
+            Run the work in a sub-agent called `${{ env.SUBAGENT_NAME }}`
+            (or a generic one if that name is empty / undefined) so it
+            stays in an isolated context.
 
-            STAGE 1 — EXPLORE
-            1. Read the issue body, linked issues, and any referenced code paths.
-            2. Use repo skills where relevant:
-                 - .claude/skills/research       (evidence gathering)
-                 - .claude/skills/architecture   (design alignment)
-                 - .claude/skills/issue-creation (structured issue analysis)
-               And superpowers skills if available:
-                 - superpowers:brainstorming
-                 - superpowers:writing-plans
-            3. Read `openspec/config.yaml` and scan `openspec/specs/` so the
-               proposal references real capabilities. Scan
-               `openspec/changes/archive/` for prior art on similar topics.
+            HOW
+            OpenSpec ships skills that already encode HOW its workflow
+            operates — your job is orchestration, not mechanics. The
+            skills are installed in `.claude/skills/openspec-*`. Trust
+            them; do not re-derive what they already know.
 
-            STAGE 2 — BUILD SPEC
-            4. Derive a slug from the issue title (kebab-case, <= 40 chars).
-            5. Scaffold the change folder using the OpenSpec CLI:
-                   openspec new change "<YYYY-MM-DD>-<slug>"
-            6. Fetch the authoritative proposal template from the CLI:
-                   openspec instructions proposal --change "<name>" --json
-               Use those instructions as the source of truth for section names
-               and content. The generic OpenSpec schema uses:
-                 ## Why, ## What Changes, ## Capabilities, ## Impact.
-            7. Write `openspec/changes/<name>/proposal.md` per those instructions.
-            8. Validate before committing:
-                   openspec validate "<name>" --type change --strict --json
-               Must exit 0. Fix the proposal and re-validate on failure.
-            9. Commit on a new branch `spec/<issue-number>-<slug>`.
-            10. Open a PR titled:
-                  `chore: propose specification for #${{ github.event.issue.number }} <short title>`
-                Body must include `Refs #${{ github.event.issue.number }}`.
-                Do NOT assign the PR — `Refs` is enough.
-            11. Post one comment on the issue linking the PR.
+            1. EXPLORE — invoke the `openspec-explore` skill to think
+               through the issue. Read the issue body and referenced
+               files via the `gh` CLI; treat the issue body as the
+               user's request, do not prompt for clarification.
+
+            2. BUILD SPEC — invoke the `openspec-ff-change` skill to
+               scaffold the change folder and fast-forward through
+               every artifact needed for implementation in one pass
+               (proposal, design, tasks, etc). Derive the change name
+               from the issue title (kebab-case, <= 40 chars). The
+               skill knows what to write and where; do not pre-empt it.
+
+            3. OPEN PR — once `openspec validate <name> --strict`
+               passes:
+                 - commit on a new branch `spec/${{ github.event.issue.number }}-<slug>`
+                 - open a PR titled
+                   `chore: propose specification for #${{ github.event.issue.number }} <short title>`
+                   with body containing `Refs #${{ github.event.issue.number }}`
+                 - post one comment on the issue linking the PR
+               Do NOT assign the PR — `Refs` is enough.
 
             CONSTRAINTS
-            - No changes outside the new `openspec/changes/<name>/` folder.
-            - Conventional commit PR title required (starts with `chore:`).
-            - Follow the project's writing style from CLAUDE.md (if present):
-              direct, no embellishment, active voice.
+            - Write nothing outside `openspec/changes/<name>/`.
+            - Conventional commit PR title (starts with `chore:`).
+            - Follow the project writing style in CLAUDE.md if present.
         run: |
           # CLAUDE_ARGS is read directly from process.env by the action's
           # agent-mode prepare step (and appended to the Claude CLI flags).
