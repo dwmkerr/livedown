@@ -92,6 +92,13 @@
 # - Budget / token caps — not required now.
 # - Slack / Teams notifications on completion — deferred.
 # - PR assignment to issue opener — deferred; PR is linked via `Refs #<n>`.
+# - Detect "agent ran but did nothing" and fail loudly. Today, if
+#   claude-code-action exits 0 without opening a PR (e.g. silent skip
+#   when ALL_INPUTS is malformed, or the agent gives up), the workflow
+#   reports success and flips the label to `openspec:spec-ready` even
+#   though there's no PR. Add a post-run check (e.g. grep agent stdout
+#   for a sentinel, or query for the expected branch / PR `Refs #<n>`)
+#   before flipping the label.
 # - When the scaffold check fails, auto-open a PR with the openspec init
 #   output (`openspec/`, `.claude/`, .gitkeep files) instead of just
 #   commenting with manual instructions. The agent already runs in the
@@ -297,14 +304,21 @@ jobs:
       # named by SUBAGENT_NAME. Generic OpenSpec template is fetched at
       # runtime via `openspec instructions proposal`, so this workflow stays
       # aligned with the upstream schema.
+      #
+      # Input passing: claude-code-action reads a single ALL_INPUTS env var
+      # (JSON blob of all inputs) — when invoked via `uses:`, GitHub auto-
+      # constructs this from `with:` keys via `${{ toJson(inputs) }}`. We
+      # call the entrypoint via `bun run` so we have to build it ourselves
+      # with `jq`. WITHOUT ALL_INPUTS the action silently exits 0 with no
+      # work done — which is what bit us on the first happy-path attempt.
       - name: Run OpenSpec Flow agent
         if: steps.check.outputs.run == 'true'
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.AGENT_GITHUB_TOKEN || github.token }}
           OVERRIDE_GITHUB_TOKEN: ${{ secrets.AGENT_GITHUB_TOKEN }}
-          INPUT_ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          INPUT_PROMPT: |
+          GITHUB_ACTION_PATH: /tmp/claude-code-action
+          PROMPT: |
             Use a sub-agent called `${{ env.SUBAGENT_NAME }}` for this task
             (or a generic sub-agent if that name is empty or not defined).
             Drive issue #${{ github.event.issue.number }} in ${{ github.repository }}
@@ -354,8 +368,14 @@ jobs:
             - Conventional commit PR title required (starts with `chore:`).
             - Follow the project's writing style from CLAUDE.md (if present):
               direct, no embellishment, active voice.
-          GITHUB_ACTION_PATH: /tmp/claude-code-action
-        run: bun run /tmp/claude-code-action/src/entrypoints/run.ts
+        run: |
+          ALL_INPUTS="$(jq -nc \
+            --arg prompt "$PROMPT" \
+            --arg api_key "$ANTHROPIC_API_KEY" \
+            --arg gh_token "$GITHUB_TOKEN" \
+            '{prompt: $prompt, anthropic_api_key: $api_key, github_token: $gh_token}')"
+          export ALL_INPUTS
+          bun run /tmp/claude-code-action/src/entrypoints/run.ts
 
       - name: Flip label to openspec:spec-ready
         if: success() && steps.check.outputs.run == 'true'
