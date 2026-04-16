@@ -31,13 +31,27 @@
 #   - `archive` — `openspec archive <name>` (stage 4)
 #
 # -----------------------------------------------------------------------------
+# HOW TO START THE FLOW
+# -----------------------------------------------------------------------------
+# Either:
+#   1. Assign the issue to the agent login (default: `dwmkerr-agent`).
+#   2. Add the `openspec:start` label to the issue.
+#
+# Both fire the workflow. The `openspec:start` label (if present) is
+# removed automatically when the run begins. Re-trigger by clearing the
+# lifecycle label (openspec:exploring|spec-ready|failed) and either
+# unassign+reassign or re-add the start label.
+#
+# -----------------------------------------------------------------------------
 # LABELS (create in repo settings before first run)
 # -----------------------------------------------------------------------------
+#   openspec:start       — manual trigger (removed when the flow starts)
 #   openspec:exploring   — agent picked up the issue, exploring + drafting
 #   openspec:spec-ready  — proposal PR opened, awaiting human review
 #   openspec:failed      — agent run failed; see logs / issue comment
 #
-# Clear any of these to allow a re-run (idempotency guard).
+# Clear the *lifecycle* labels (exploring|spec-ready|failed) to allow a
+# re-run. The start label is consumed automatically.
 #
 # -----------------------------------------------------------------------------
 # SUB-AGENT
@@ -123,13 +137,14 @@ name: OpenSpec Flow
 
 on:
   issues:
-    types: [assigned]
+    types: [assigned, labeled]
 
 env:
-  AGENT_ASSIGNEE: "dwmkerr"
+  AGENT_ASSIGNEE: "dwmkerr-agent"
   SUBAGENT_NAME: "openspec-flow-agent"
   CLAUDE_CODE_ACTION_REF: "v1.0.79"
   OPENSPEC_CLI_VERSION: "latest"
+  LABEL_START: "openspec:start"
   LABEL_EXPLORING: "openspec:exploring"
   LABEL_READY: "openspec:spec-ready"
   LABEL_FAILED: "openspec:failed"
@@ -151,25 +166,52 @@ jobs:
     timeout-minutes: 45
 
     steps:
-      - name: Check trigger (assignee + idempotency)
+      # Two ways to start the flow:
+      #   - assigned event with assignee == AGENT_ASSIGNEE
+      #   - labeled event where the added label == LABEL_START
+      # Either fires; both are no-ops if a lifecycle label is already set.
+      - name: Check trigger (assignee or start label, plus idempotency)
         id: check
         env:
+          EVENT_ACTION: ${{ github.event.action }}
           ASSIGNEE_LOGIN: ${{ github.event.assignee.login }}
+          ADDED_LABEL: ${{ github.event.label.name }}
           ISSUE_LABELS: ${{ join(github.event.issue.labels.*.name, ',') }}
         run: |
-          if [ "$ASSIGNEE_LOGIN" != "$AGENT_ASSIGNEE" ]; then
-            echo "Assignee '$ASSIGNEE_LOGIN' != AGENT_ASSIGNEE '$AGENT_ASSIGNEE' — skipping"
+          fired=""
+          case "$EVENT_ACTION" in
+            assigned)
+              if [ "$ASSIGNEE_LOGIN" = "$AGENT_ASSIGNEE" ]; then
+                fired="assignee=$ASSIGNEE_LOGIN"
+              else
+                echo "Assignee '$ASSIGNEE_LOGIN' != AGENT_ASSIGNEE '$AGENT_ASSIGNEE' — skipping"
+              fi
+              ;;
+            labeled)
+              if [ "$ADDED_LABEL" = "$LABEL_START" ]; then
+                fired="label=$ADDED_LABEL"
+              else
+                echo "Added label '$ADDED_LABEL' != LABEL_START '$LABEL_START' — skipping"
+              fi
+              ;;
+            *)
+              echo "Event action '$EVENT_ACTION' not handled — skipping"
+              ;;
+          esac
+
+          if [ -z "$fired" ]; then
             echo "run=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
           # Skip if any openspec:* lifecycle label is already set. Clear them manually to re-run.
           if echo ",$ISSUE_LABELS," | grep -qE ",(${LABEL_EXPLORING}|${LABEL_READY}|${LABEL_FAILED}),"; then
-            echo "Issue already labelled with an openspec:* state — skipping"
+            echo "Issue already labelled with an openspec:* lifecycle state — skipping"
             echo "run=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
+          echo "Triggered by $fired"
           echo "run=true" >> "$GITHUB_OUTPUT"
 
       # Fail fast if any of the three lifecycle labels are missing from the repo.
@@ -184,7 +226,7 @@ jobs:
           ISSUE_NUMBER: ${{ github.event.issue.number }}
         run: |
           missing=()
-          for label in "$LABEL_EXPLORING" "$LABEL_READY" "$LABEL_FAILED"; do
+          for label in "$LABEL_START" "$LABEL_EXPLORING" "$LABEL_READY" "$LABEL_FAILED"; do
             if ! gh label list --repo "$REPO" --search "$label" --json name \
                 --jq '.[].name' | grep -Fxq "$label"; then
               missing+=("$label")
@@ -202,6 +244,7 @@ jobs:
               echo ">"
               echo "> Create them with:"
               echo "> \`\`\`bash"
+              echo "> gh label create 'openspec:start'      --repo $REPO --color 1D76DB --description 'OpenSpec Flow: manual trigger (consumed when run starts)'"
               echo "> gh label create 'openspec:exploring'  --repo $REPO --color FBCA04 --description 'OpenSpec Flow: agent is exploring the issue and drafting a proposal'"
               echo "> gh label create 'openspec:spec-ready' --repo $REPO --color 0E8A16 --description 'OpenSpec Flow: proposal PR opened, awaiting human review'"
               echo "> gh label create 'openspec:failed'     --repo $REPO --color B60205 --description 'OpenSpec Flow: agent run failed; see workflow logs'"
@@ -223,6 +266,8 @@ jobs:
           RUN_URL="${{ github.server_url }}/$REPO/actions/runs/${{ github.run_id }}"
           gh api -X POST "repos/$REPO/issues/$ISSUE_NUMBER/reactions" \
             -f content="eyes" >/dev/null || true
+          # Consume the start label if present, then mark exploring.
+          gh issue edit "$ISSUE_NUMBER" --repo "$REPO" --remove-label "$LABEL_START" 2>/dev/null || true
           gh issue edit "$ISSUE_NUMBER" --repo "$REPO" --add-label "$LABEL_EXPLORING"
           gh issue comment "$ISSUE_NUMBER" --repo "$REPO" \
             --body "> OpenSpec Flow exploring this issue. [View run]($RUN_URL)"
