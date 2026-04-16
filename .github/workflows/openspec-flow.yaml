@@ -353,8 +353,16 @@ jobs:
                  - commit on a new branch `spec/${{ github.event.issue.number }}-<slug>`
                  - open a PR titled
                    `chore: propose specification for #${{ github.event.issue.number }} <short title>`
-                   with body containing `Refs #${{ github.event.issue.number }}`
-                 - post one comment on the issue linking the PR
+                 - PR body: ONLY `Refs #${{ github.event.issue.number }}`
+                   followed by one short sentence naming the change
+                   folder. Do NOT restate the proposal, list artifacts,
+                   add a "Summary" section, or include a test plan —
+                   the details live in the OpenSpec change folder
+                   itself, which reviewers can read.
+                 - post ONE comment on the issue: a single line linking
+                   the PR. Do NOT summarise the proposal contents in
+                   the comment — the PR is the index, the change folder
+                   is the detail.
                Do NOT assign the PR — `Refs` is enough.
 
             CONSTRAINTS
