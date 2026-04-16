@@ -213,16 +213,19 @@ jobs:
             exit 1
           fi
 
-      - name: React and add label openspec:exploring
+      - name: React, label, and link to run
         if: steps.check.outputs.run == 'true'
         env:
           GH_TOKEN: ${{ secrets.AGENT_GITHUB_TOKEN || github.token }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
           REPO: ${{ github.repository }}
         run: |
+          RUN_URL="${{ github.server_url }}/$REPO/actions/runs/${{ github.run_id }}"
           gh api -X POST "repos/$REPO/issues/$ISSUE_NUMBER/reactions" \
             -f content="eyes" >/dev/null || true
           gh issue edit "$ISSUE_NUMBER" --repo "$REPO" --add-label "$LABEL_EXPLORING"
+          gh issue comment "$ISSUE_NUMBER" --repo "$REPO" \
+            --body "> OpenSpec Flow exploring this issue. [View run]($RUN_URL)"
 
       # Full clone — the claude-code-action entrypoint fetches branches for diffs.
       - name: Checkout repository
@@ -369,11 +372,18 @@ jobs:
             - Follow the project's writing style from CLAUDE.md (if present):
               direct, no embellishment, active voice.
         run: |
+          # claude_args is appended to the Claude CLI invocation. Agent mode
+          # (unlike tag mode) doesn't auto-grant tool permissions, so without
+          # bypassPermissions every Bash/Write/Edit call gets denied — we saw
+          # 75 permission denials and a no-op success on the prior run.
+          # CI is unattended, the prompt is trusted, blast radius is bounded
+          # by GITHUB_TOKEN scope.
           ALL_INPUTS="$(jq -nc \
             --arg prompt "$PROMPT" \
             --arg api_key "$ANTHROPIC_API_KEY" \
             --arg gh_token "$GITHUB_TOKEN" \
-            '{prompt: $prompt, anthropic_api_key: $api_key, github_token: $gh_token}')"
+            --arg claude_args "--permission-mode bypassPermissions" \
+            '{prompt: $prompt, anthropic_api_key: $api_key, github_token: $gh_token, claude_args: $claude_args}')"
           export ALL_INPUTS
           bun run /tmp/claude-code-action/src/entrypoints/run.ts
 
