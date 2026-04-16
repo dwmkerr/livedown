@@ -25,10 +25,32 @@
 # 7. PR opened                      -> flip-label-success    -> openspec:spec-ready  -> (handoff)         -> none
 # 8. Any stage failed               -> flip-label-failure    -> openspec:failed      -> (halt)            -> none
 #
+# -----------------------------------------------------------------------------
+# WHERE THIS SITS IN THE OPENSPEC LIFECYCLE
+# -----------------------------------------------------------------------------
+# OpenSpec lifecycle (per upstream `docs/workflows.md`):
+#
+#   /opsx:propose ──► /opsx:apply ──► /opsx:verify ──► /opsx:archive
+#      (us)           (implement)       (optional)       (finalize)
+#
+# This workflow covers **propose only**. Once the proposal PR is merged
+# to main, the `openspec/changes/<name>/` folder lives in the repo as an
+# in-flight proposed change — that is its intended home, not a mistake.
+#
+# The idiomatic next step is `openspec-apply`: implement the tasks in
+# `tasks.md`, writing the actual code. `openspec-verify` is an optional
+# implementation-vs-spec check. `openspec-archive` runs last, merging
+# delta specs into main `openspec/specs/` and moving the change folder
+# to `openspec/changes/archive/`.
+#
+# Note the distinction: **code review** is the human step on the PR;
+# **`openspec-verify`** is OpenSpec's own post-implementation check.
+# They are separate concepts.
+#
 # Later stages (NOT in this slice — see FUTURE WORK):
-#   - `apply`   — implement the proposal (stage 3)
-#   - `verify`  — check implementation matches spec
-#   - `archive` — `openspec archive <name>` (stage 4)
+#   - `apply`   — implement the proposal
+#   - `verify`  — optional implementation-vs-spec check
+#   - `archive` — `openspec archive <name>` (moves folder + merges specs)
 #
 # -----------------------------------------------------------------------------
 # HOW TO START THE FLOW
