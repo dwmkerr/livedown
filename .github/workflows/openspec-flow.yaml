@@ -401,16 +401,30 @@ jobs:
                  - PR body structure (in this exact order):
                      1. `Refs #${{ github.event.issue.number }}`
                      2. blank line
-                     3. one short sentence naming the change folder
-                     4. a `---` horizontal rule
-                     5. the FULL contents of
+                     3. a short paragraph (2-4 sentences) summarising
+                        what the issue asked for, in your own words,
+                        so a reviewer who hasn't read the issue can
+                        get the gist.
+                     4. one line: "Planned using the `openspec-explore`
+                        and `openspec-ff-change` skills." (Adjust the
+                        skill names if you actually used different
+                        OpenSpec skills.)
+                     5. a `---` horizontal rule
+                     6. the FULL contents of
                         `openspec/changes/<name>/proposal.md` pasted
                         verbatim, so reviewers can read the proposal
                         inline without clicking into the file.
                    Do NOT add a "Summary" section, an artifacts table,
                    or a test plan — the proposal IS the summary.
-                 - post one comment on the issue linking the PR.
-                   Detail in the comment is fine.
+                 - post one comment on the issue with:
+                     - a one-paragraph recap of what the issue asked
+                       for and the approach you took
+                     - a sentence noting the OpenSpec skills used
+                       (`openspec-explore`, `openspec-ff-change`)
+                     - a link to the PR
+                   Keep it informative but readable — a reviewer
+                   should be able to skim it and decide whether to
+                   open the PR.
                Do NOT assign the PR — `Refs` is enough.
 
             CONSTRAINTS
