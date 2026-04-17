@@ -148,6 +148,11 @@ jobs:
             exit 1
           fi
 
+      # Inlined rather than dispatched to a script file because this step
+      # runs before `actions/checkout`, so the repo isn't on disk yet.
+      # When we move to a reusable composite action (e.g.
+      # `./.github/actions/openspec-flow-prune-comments`) we can hoist this,
+      # but that requires the action code to be fetched separately.
       - name: Prune prior agent summary comments
         if: steps.check.outputs.run == 'true'
         env:
@@ -155,8 +160,15 @@ jobs:
           REPO: ${{ github.repository }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
         run: |
-          ./.github/workflows/scripts/prune-agent-comments.sh \
-            "$REPO" "$ISSUE_NUMBER" "$AGENT_COMMENT_MARKER"
+          ids=$(gh api --paginate "repos/$REPO/issues/$ISSUE_NUMBER/comments" \
+            --jq --arg m "$AGENT_COMMENT_MARKER" \
+            '.[] | select(.body | contains($m)) | .id')
+          [ -z "$ids" ] && { echo "No prior agent comments."; exit 0; }
+          while read -r id; do
+            [ -z "$id" ] && continue
+            gh api --method DELETE "repos/$REPO/issues/comments/$id" >/dev/null 2>&1 \
+              || echo "::warning::Failed to delete comment $id"
+          done <<< "$ids"
 
       - name: React, label, and post starting comment
         if: steps.check.outputs.run == 'true'
@@ -353,8 +365,15 @@ jobs:
           REPO: ${{ github.repository }}
           ISSUE_NUMBER: ${{ steps.check.outputs.issue_number }}
         run: |
-          ./.github/workflows/scripts/prune-agent-comments.sh \
-            "$REPO" "$ISSUE_NUMBER" "$AGENT_COMMENT_MARKER"
+          ids=$(gh api --paginate "repos/$REPO/issues/$ISSUE_NUMBER/comments" \
+            --jq --arg m "$AGENT_COMMENT_MARKER" \
+            '.[] | select(.body | contains($m)) | .id')
+          [ -z "$ids" ] && { echo "No prior agent comments."; exit 0; }
+          while read -r id; do
+            [ -z "$id" ] && continue
+            gh api --method DELETE "repos/$REPO/issues/comments/$id" >/dev/null 2>&1 \
+              || echo "::warning::Failed to delete comment $id"
+          done <<< "$ids"
 
       - name: React, flip label, post starting comment
         if: steps.verify-issue.outputs.run == 'true'
@@ -531,8 +550,15 @@ jobs:
           REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
-          ./.github/workflows/scripts/prune-agent-comments.sh \
-            "$REPO" "$PR_NUMBER" "$AGENT_COMMENT_MARKER"
+          ids=$(gh api --paginate "repos/$REPO/issues/$PR_NUMBER/comments" \
+            --jq --arg m "$AGENT_COMMENT_MARKER" \
+            '.[] | select(.body | contains($m)) | .id')
+          [ -z "$ids" ] && { echo "No prior agent comments."; exit 0; }
+          while read -r id; do
+            [ -z "$id" ] && continue
+            gh api --method DELETE "repos/$REPO/issues/comments/$id" >/dev/null 2>&1 \
+              || echo "::warning::Failed to delete comment $id"
+          done <<< "$ids"
 
       - name: React and post starting comment
         if: steps.check.outputs.run == 'true'
