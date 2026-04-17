@@ -1,0 +1,146 @@
+# openspec-flow Specification
+
+## Purpose
+
+A single GitHub Actions workflow that automates the full OpenSpec
+lifecycle — **plan**, **implement**, and **respond** — from a single file
+(`.github/workflows/openspec-flow.yaml`). The workflow turns GitHub
+events into OpenSpec stages, drives Claude Code to produce the artifacts
+and code, and maintains the issue/PR label lifecycle so humans know
+exactly what state each piece of work is in.
+
+## Requirements
+
+### Requirement: Single workflow file owns the full OpenSpec lifecycle
+
+The system SHALL implement the complete OpenSpec automation lifecycle —
+plan, implement, and respond — within a single GitHub Actions workflow
+file (`.github/workflows/openspec-flow.yaml`). No second workflow file
+SHALL be required for any lifecycle stage.
+
+#### Scenario: Plan job fires on issue assignment or start label
+- **WHEN** a GitHub issue is assigned to the agent login, or the
+  `openspec:start` label is added to an issue with no lifecycle label
+- **THEN** the `plan` job runs and opens a `spec/<n>-<slug>` proposal PR
+
+#### Scenario: Implement job fires on proposal PR merge
+- **WHEN** a PR whose head branch matches `spec/<n>-<slug>` is merged
+  into main and the linked issue is in `openspec:spec-ready`
+- **THEN** the `implement` job runs and opens an `impl/<n>-<slug>` code PR
+
+#### Scenario: Respond job fires on openspec:start label on a PR
+- **WHEN** the `openspec:start` label is added to a PR whose branch
+  matches `spec/**` or `impl/**`
+- **THEN** the `respond` job runs, re-reads the PR conversation, and
+  pushes refinement commits to the PR branch
+
+#### Scenario: Jobs share a single env block
+- **WHEN** the workflow file is read
+- **THEN** version pins, label names, and the agent comment marker
+  appear exactly once in the top-level `env:` block
+
+### Requirement: No behaviour change from consolidation
+
+The plan and implement stages SHALL behave identically after
+consolidation — same trigger conditions, same label transitions, same
+agent prompts, same secrets handling, and same timeout values as the
+two original workflows (`openspec-flow.yaml` plan stage and
+`openspec-flow-implement.yaml` implement stage).
+
+#### Scenario: Plan stage label lifecycle preserved
+- **WHEN** the plan job runs successfully
+- **THEN** the issue transitions from `openspec:exploring` to
+  `openspec:spec-ready`
+
+#### Scenario: Implement stage label lifecycle preserved
+- **WHEN** the implement job runs successfully
+- **THEN** the issue transitions from `openspec:spec-ready` through
+  `openspec:implement` to `openspec:review`
+
+#### Scenario: Failure handling preserved for all jobs
+- **WHEN** any job fails
+- **THEN** the issue/PR is labelled `openspec:failed` and a comment
+  linking to the run is posted
+
+### Requirement: Respond job refines artifacts from PR conversation
+
+The system SHALL read the full PR conversation (issue comments, review
+bodies, and review comments) and instruct the agent to refine the
+relevant artifacts accordingly, when the `openspec:start` label is
+added to a PR whose branch matches `spec/**` or `impl/**`.
+
+#### Scenario: Discussion requests a change to the proposal
+- **WHEN** a reviewer asks for a change to scope or motivation on a
+  `spec/**` PR
+- **THEN** the agent SHALL update `proposal.md` and re-validate with
+  `openspec validate <slug> --strict`
+
+#### Scenario: Discussion requests a change to design or specs
+- **WHEN** a reviewer asks for a technical change or additional
+  requirement
+- **THEN** the agent SHALL update `design.md` and/or the relevant
+  `specs/**/*.md` file
+
+#### Scenario: Discussion requests a change to tasks
+- **WHEN** a reviewer asks to add or remove a deliverable
+- **THEN** the agent SHALL update `tasks.md`
+
+#### Scenario: Discussion requests a change to implementation
+- **WHEN** a reviewer asks for a change on an `impl/**` PR
+- **THEN** the agent SHALL update the relevant source files and push
+  to the PR branch
+
+#### Scenario: Nothing to change
+- **WHEN** the agent determines the existing artifacts already reflect
+  the discussion
+- **THEN** the agent SHALL post a summary comment stating that no
+  changes were needed and why
+
+### Requirement: openspec:start label removed after respond run
+
+The workflow SHALL remove the `openspec:start` label from the PR after
+the respond agent step completes, regardless of whether changes were
+made.
+
+#### Scenario: Successful respond run
+- **WHEN** the respond agent step exits successfully
+- **THEN** a workflow step SHALL remove the `openspec:start` label from
+  the PR
+
+#### Scenario: Failed respond run
+- **WHEN** the respond agent step fails
+- **THEN** a workflow step SHALL still remove the `openspec:start`
+  label and post a failure comment linking to the run
+
+### Requirement: Agent summary comments are prunable
+
+Every agent-authored status comment posted by the workflow SHALL begin
+with a literal marker line (`<!-- openspec-flow-summary -->`) so that
+subsequent workflow runs can find and delete prior comments authored by
+the agent. Before posting any new summary comment, the workflow SHALL
+delete all prior comments on the same issue/PR that contain the marker.
+
+#### Scenario: New summary supersedes prior summary
+- **WHEN** any job (plan, implement, or respond) is about to post a
+  status comment on an issue or PR
+- **THEN** a workflow step SHALL first delete every prior comment on
+  that issue/PR whose body contains the marker
+
+#### Scenario: Human comments are never deleted
+- **WHEN** the prune step runs
+- **THEN** only comments whose body contains the marker SHALL be
+  deleted — human comments (which never contain the marker) MUST be
+  preserved
+
+### Requirement: Agent comments include a re-engagement footer
+
+Every agent-authored status comment posted by the workflow SHALL end
+with a horizontal rule (`---`) on its own line followed by the text:
+"Add the `openspec:start` label to re-engage the agent with the latest
+discussion."
+
+#### Scenario: Any agent comment posted
+- **WHEN** the workflow or the agent posts a status comment on an
+  issue or PR
+- **THEN** the final two lines of the comment body SHALL be `---` and
+  the re-engagement footer, in that order
