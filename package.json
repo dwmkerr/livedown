@@ -8,14 +8,17 @@
     "livedown": "dist/cli.js"
   },
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && chmod +x dist/cli.js",
     "build:watch": "tsc -w",
     "dev": "tsx watch src/cli.ts",
     "start": "ts-node ./src/cli.ts",
     "lint": "eslint .",
     "lint:fix": "eslint --fix .",
-    "test": "jest --no-coverage",
-    "test:cov": "jest --coverage",
+    "test": "jest --no-coverage --testPathIgnorePatterns=integration",
+    "test:integration": "jest --no-coverage --forceExit --testPathPatterns=integration",
+    "test:integration:watch": "LIVEDOWN_OPEN_BROWSER=1 jest --no-coverage --forceExit --testPathPatterns=integration",
+    "test:all": "jest --no-coverage",
+    "test:cov": "jest --coverage --testPathIgnorePatterns=integration",
     "prepare": "husky"
   },
   "files": [

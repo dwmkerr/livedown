@@ -88,6 +88,10 @@ Livedown has three components:
 
 3. **Browser Viewer** (`public/index.html`) — renders the shared markdown with live preview and a CodeMirror editor. Viewers can read freely; editing requires the edit key.
 
+The CLI only prints the shareable URL **after** the relay acknowledges the sharer is registered. This means viewers can never arrive before the sharer is ready. The browser has an explicit state machine (`loading` / `live` / `offline` / `notfound`) driven entirely by relay messages — no timeouts, no guessing.
+
+For the complete protocol, state machine, and message types, see [`docs/architecture.md`](docs/architecture.md).
+
 ### Key Libraries
 
 | Library | Used In | Purpose |

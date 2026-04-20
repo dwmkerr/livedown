@@ -2,5 +2,9 @@
   "name": "livedown",
   "main": "src/party/livedown.ts",
   "compatibilityDate": "2025-01-01",
-  "serve": "public"
+  "serve": {
+    "path": "public",
+    "browserTTL": 0,
+    "edgeTTL": 0
+  }
 }

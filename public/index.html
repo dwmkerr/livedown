@@ -367,17 +367,79 @@
     })
     .catch(function() {});
 
-  function showLanding(errorMsg) {
-    document.getElementById('landing').style.display = 'block';
-    document.getElementById('statusbar').style.display = 'none';
-    document.getElementById('panes').style.display = 'none';
-    document.getElementById('edits-popover').style.display = 'none';
-    document.title = 'livedown';
-    if (errorMsg) {
-      var el = document.getElementById('landing-error');
-      el.textContent = errorMsg;
-      el.classList.add('visible');
+  // ── App state machine ───────────────────────────────────────
+  // States: 'loading' | 'live' | 'offline' | 'notfound'
+  // Transitions are driven entirely by relay messages — no timeouts.
+  //
+  // Rule: 'notfound' is only reachable from 'loading'. Once a viewer has
+  // seen a sharer (live state), subsequent disconnects transition to
+  // 'offline' instead — the content stays visible and a reconnecting
+  // sharer restores the session.
+  var appState = 'loading';
+  var hasEverBeenLive = false;
+
+  function setAppState(newState, errorMsg) {
+    appState = newState;
+    var landing = document.getElementById('landing');
+    var statusbar = document.getElementById('statusbar');
+    var panes = document.getElementById('panes');
+    var editsPopover = document.getElementById('edits-popover');
+    var landingError = document.getElementById('landing-error');
+    var tokenModal = document.getElementById('token-modal');
+
+    if (newState === 'notfound') {
+      landing.style.display = 'block';
+      statusbar.style.display = 'none';
+      panes.style.display = 'none';
+      editsPopover.style.display = 'none';
+      // Close any open modal — it's meaningless when there's no sharer.
+      if (tokenModal) tokenModal.classList.remove('open');
+      document.title = 'livedown';
+      if (errorMsg) {
+        landingError.textContent = errorMsg;
+        landingError.classList.add('visible');
+      }
+      return;
     }
+
+    // live / offline / loading — show the main UI
+    landing.style.display = 'none';
+    statusbar.style.display = '';
+    panes.style.display = '';
+    editsPopover.style.display = '';
+    landingError.classList.remove('visible');
+
+    if (newState === 'loading') {
+      setStatus('connecting');
+      return;
+    }
+
+    if (newState === 'offline') {
+      // Sharer disconnected — keep last known content visible but disable editing
+      setStatus('offline');
+      if (typeof cm !== 'undefined') {
+        cm.setOption('readOnly', true);
+        cm.refresh();
+      }
+      return;
+    }
+
+    if (newState === 'live') {
+      hasEverBeenLive = true;
+      setStatus('live');
+      // Never use readOnly in live state - the beforeChange handler blocks
+      // edits and shows the edit key modal for protected rooms. readOnly
+      // silently swallows input so the user never sees the modal.
+      if (typeof cm !== 'undefined') {
+        cm.setOption('readOnly', false);
+        cm.refresh();
+      }
+    }
+  }
+
+  // Back-compat alias: older code called showLanding() with no hash.
+  function showLanding(errorMsg) {
+    setAppState('notfound', errorMsg);
   }
 
   // No hash — show landing page
@@ -514,8 +576,13 @@
   const label = document.getElementById('sb-label');
 
   function setStatus(state) {
-    dot.className   = state;
-    label.textContent = state === 'live' ? 'live' : state === 'offline' ? 'offline' : 'connecting…';
+    // states: 'live', 'offline' (sharer gone), 'disconnected' (ws lost), 'connecting'
+    dot.className = state === 'live' ? 'live' : state === 'connecting' ? '' : 'offline';
+    label.textContent =
+      state === 'live' ? 'live'
+      : state === 'offline' ? 'sharer offline'
+      : state === 'disconnected' ? 'disconnected'
+      : 'connecting…';
   }
 
   function setMeta(meta) {
@@ -616,6 +683,7 @@
       editKey = val;
       secretKey = kp.secretKey;
       editUnlocked = true;
+      cm.setOption('readOnly', false);
       updateProfileAccess();
       hideTokenModal();
     } catch (e) {
@@ -683,15 +751,25 @@
     recordEdit(myGuestName, new Date().toISOString(), content);
   }
 
-  var gotContent = false;
+  function notFoundMessage() {
+    var name = docName.split('/').pop() || docName;
+    return name + ' not found — no one is sharing this document. See below to get started.';
+  }
+
+  function applySharerInfo(msg) {
+    isProtected = !!msg.protected;
+    if (msg.publicKey) roomPublicKey = msg.publicKey;
+    updateProfileAccess();
+  }
 
   function connect() {
     ws = new WebSocket(url);
 
     ws.onopen = () => {
-      setStatus('live');
       reconnectDelay = 1000;
       document.getElementById('loading').classList.remove('active');
+      // Don't call setStatus('live') here — wait for init to tell us whether
+      // we're actually live (hasSharer:true) or in notfound (hasSharer:false).
     };
 
     ws.onmessage = (e) => {
@@ -699,23 +777,31 @@
 
       if (msg.type === 'init') {
         setProfile(msg.guestId);
-        if (msg.content) gotContent = true;
         if (msg.content) {
           cm.setValue(msg.content);
           renderPreview(msg.content);
         }
         setMeta(msg.meta);
-        isProtected = !!msg.protected;
-        if (msg.publicKey) roomPublicKey = msg.publicKey;
-        updateProfileAccess();
+        applySharerInfo(msg);
         setLastEdit(msg.meta?.editor, msg.meta?.editedAt);
         if (msg.meta?.editor) recordEdit(msg.meta.editor, msg.meta.editedAt, msg.content);
+
+        // Authoritative: does the room have a sharer right now?
+        if (msg.hasSharer) {
+          setAppState('live');
+        } else if (hasEverBeenLive) {
+          // Viewer reconnected and the sharer isn't currently present, but
+          // we've seen one before — this is the 'offline' state, not 'notfound'.
+          // The sharer may come back; keep content visible, disable editing.
+          setAppState('offline');
+        } else {
+          // First init and no sharer — truly not found.
+          setAppState('notfound', notFoundMessage());
+        }
         return;
       }
 
       if (msg.type === 'update') {
-        gotContent = true;
-
         setMeta(msg.meta);
         setLastEdit(msg.meta?.editor, msg.meta?.editedAt);
         recordEdit(msg.meta?.editor, msg.meta?.editedAt, msg.content);
@@ -727,6 +813,7 @@
         } else {
           flashRemoteEdit();
         }
+        return;
       }
 
       if (msg.type === 'auth-error') {
@@ -740,29 +827,31 @@
         return;
       }
 
-      if (msg.type === 'protected') {
-        isProtected = !!msg.protected;
-        if (msg.publicKey) roomPublicKey = msg.publicKey;
-        updateProfileAccess();
+      if (msg.type === 'sharer-here') {
+        applySharerInfo(msg);
+        // Transition: notfound/offline → live
+        setAppState('live');
+        return;
+      }
+
+      if (msg.type === 'sharer-gone') {
+        // Don't kick the viewer to the landing page — the sharer might reconnect.
+        // Keep content visible but disable editing.
+        setAppState('offline');
+        return;
       }
     };
 
     ws.onclose = () => {
-      setStatus('offline');
+      // Viewer's own WebSocket lost — this is different from the sharer going
+      // offline. Show "disconnected" until reconnect succeeds.
+      setStatus('disconnected');
       setTimeout(connect, reconnectDelay);
       reconnectDelay = Math.min(reconnectDelay * 2, 10000);
     };
   }
 
   connect();
-
-  // Show not-found if no content arrives within 8s
-  setTimeout(function () {
-    if (!gotContent) {
-      var name = docName.split('/').pop() || docName;
-      showLanding(name + ' not found — no one is sharing this document. See below to get started.');
-    }
-  }, 8000);
 
   // ── Draggable divider ────────────────────────────────────────
   const divider     = document.getElementById('divider');

@@ -3,7 +3,13 @@ import prettier from "eslint-plugin-prettier";
 
 export default [
   {
-    ignores: ["dist/", "node_modules/", "public/", "jest.config.ts"],
+    ignores: [
+      "dist/",
+      "node_modules/",
+      "public/",
+      "scratch/",
+      "jest.config.ts",
+    ],
   },
   ...tseslint.configs.recommended,
   {

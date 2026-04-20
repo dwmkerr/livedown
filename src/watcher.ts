@@ -31,7 +31,7 @@ function parseMeta(
   };
 }
 
-const HINTS = "\x1b[2m  t copy edit key  q quit\x1b[0m";
+const HINTS = "\x1b[2m  o open  c copy key  q quit\x1b[0m";
 let showHints = false;
 
 function log(msg: string): void {
@@ -51,10 +51,28 @@ export function startWatcher(
   editor: string,
   editKey: string,
   publicKey: string
-): void {
+): Promise<void> {
   let ws: WebSocket | null = null;
   let ignoreNextWrite = false;
+  let isReady = false;
+  let resolveReady: (() => void) | null = null;
+  let rejectReady: ((err: Error) => void) | null = null;
   showHints = process.stdin.isTTY === true;
+
+  const ready = new Promise<void>((resolve, reject) => {
+    resolveReady = resolve;
+    rejectReady = reject;
+  });
+
+  const readyTimeout = setTimeout(() => {
+    if (!isReady && rejectReady) {
+      rejectReady(
+        new Error(
+          "Timed out connecting to relay after 10s. Check your network connection and relay host."
+        )
+      );
+    }
+  }, 10000);
 
   function push(raw: string): void {
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
@@ -79,10 +97,10 @@ export function startWatcher(
     ws = new WebSocket(roomUrl);
 
     ws.on("open", () => {
-      log("Connected to room");
-      if (showHints && process.stdout.isTTY) {
-        process.stdout.write(HINTS);
-      }
+      // On first connect this is silent; the CLI shows "Connecting..." until
+      // sharer-ack resolves the ready promise. On subsequent reconnects we log
+      // so the user knows we recovered.
+      if (isReady) log("Reconnected to room");
       ws!.send(JSON.stringify({ type: "set-token", publicKey }));
       push(fs.readFileSync(filePath, "utf8"));
     });
@@ -90,6 +108,14 @@ export function startWatcher(
     ws.on("message", (data: WebSocket.Data) => {
       try {
         const msg = JSON.parse(data.toString());
+        if (msg.type === "sharer-ack") {
+          if (!isReady) {
+            isReady = true;
+            clearTimeout(readyTimeout);
+            resolveReady?.();
+          }
+          return;
+        }
         if (msg.type === "auth-error") {
           log("Edit key rejected — check your --edit-key value");
           return;
@@ -145,11 +171,19 @@ export function startWatcher(
     });
 
     ws.on("close", () => {
-      log("Disconnected — reconnecting in 2s...");
-      setTimeout(connect, 2000);
+      if (isReady) {
+        log("Disconnected — reconnecting in 2s...");
+        setTimeout(connect, 2000);
+      }
+      // If not yet ready, the readyTimeout will reject the promise; no reconnect.
     });
 
-    ws.on("error", (e: Error) => log(`WS error: ${e.message}`));
+    ws.on("error", (e: Error) => {
+      if (isReady) {
+        log(`WS error: ${e.message}`);
+      }
+      // Before ready, errors are reported via the rejected ready promise.
+    });
   }
 
   chokidar
@@ -167,4 +201,5 @@ export function startWatcher(
     });
 
   connect();
+  return ready;
 }
