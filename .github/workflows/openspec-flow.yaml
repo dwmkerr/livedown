@@ -160,9 +160,11 @@ jobs:
           REPO: ${{ github.repository }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
         run: |
+          # Pipe to jq so --arg reaches jq. `gh api --jq` takes a single
+          # expression string and does not forward --arg.
           ids=$(gh api --paginate "repos/$REPO/issues/$ISSUE_NUMBER/comments" \
-            --jq --arg m "$AGENT_COMMENT_MARKER" \
-            '.[] | select(.body | contains($m)) | .id')
+            | jq -r --arg m "$AGENT_COMMENT_MARKER" \
+              '.[] | select(.body | contains($m)) | .id')
           [ -z "$ids" ] && { echo "No prior agent comments."; exit 0; }
           while read -r id; do
             [ -z "$id" ] && continue
@@ -365,9 +367,11 @@ jobs:
           REPO: ${{ github.repository }}
           ISSUE_NUMBER: ${{ steps.check.outputs.issue_number }}
         run: |
+          # Pipe to jq so --arg reaches jq. `gh api --jq` takes a single
+          # expression string and does not forward --arg.
           ids=$(gh api --paginate "repos/$REPO/issues/$ISSUE_NUMBER/comments" \
-            --jq --arg m "$AGENT_COMMENT_MARKER" \
-            '.[] | select(.body | contains($m)) | .id')
+            | jq -r --arg m "$AGENT_COMMENT_MARKER" \
+              '.[] | select(.body | contains($m)) | .id')
           [ -z "$ids" ] && { echo "No prior agent comments."; exit 0; }
           while read -r id; do
             [ -z "$id" ] && continue
@@ -551,8 +555,8 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           ids=$(gh api --paginate "repos/$REPO/issues/$PR_NUMBER/comments" \
-            --jq --arg m "$AGENT_COMMENT_MARKER" \
-            '.[] | select(.body | contains($m)) | .id')
+            | jq -r --arg m "$AGENT_COMMENT_MARKER" \
+              '.[] | select(.body | contains($m)) | .id')
           [ -z "$ids" ] && { echo "No prior agent comments."; exit 0; }
           while read -r id; do
             [ -z "$id" ] && continue
