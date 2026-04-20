@@ -3,6 +3,7 @@
   <h3 align="center">Share a local markdown file and collaborate live in a browser and across machines.</h3>
   <p align="center">
     <a href="#quickstart">Quickstart</a> |
+    <a href="#docker">Docker</a> |
     <a href="#how-it-works">How It Works</a> |
     <a href="#commands">Commands</a>
   </p>
@@ -46,6 +47,26 @@ Open a shared document in the browser.
 ```bash
 livedown open https://livedown.dwmkerr.partykit.dev/#abc123/notes.md
 ```
+
+## Docker
+
+Run Livedown without installing Node.js by using the published Docker image.
+
+```bash
+docker run --rm -v "$(pwd):/data" ghcr.io/dwmkerr/livedown share /data/notes.md
+```
+
+The `--rm` flag removes the container on exit. The `-v "$(pwd):/data"` flag bind-mounts your current directory into `/data` inside the container so the CLI can read your local file.
+
+Pass optional flags after the image name exactly as you would with the CLI:
+
+```bash
+docker run --rm -v "$(pwd):/data" ghcr.io/dwmkerr/livedown share /data/notes.md \
+  --editor "Alice" \
+  --edit-key <your-edit-key>
+```
+
+> **Platform note:** The published image targets `linux/amd64`. ARM users (Apple Silicon, Raspberry Pi, etc.) should build the image locally: `docker build -t livedown-local .`
 
 ## How It Works
 
