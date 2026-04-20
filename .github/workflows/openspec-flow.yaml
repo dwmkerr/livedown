@@ -3,11 +3,14 @@
 # =============================================================================
 # Single workflow driving the full OpenSpec lifecycle:
 #
-#   plan  ──►  implement  ──►  respond (any time)
+#   plan  ──►  implement  ──►  respond (any time)  ──►  cleanup
 #
 # - plan      fires on issue assignment / openspec:start label   -> spec PR
-# - implement fires on spec/** PR merge                          -> code PR
+# - implement fires on spec/** PR merge or issue relabel         -> code PR
 # - respond   fires on openspec:start label on a PR              -> refinement
+# - cleanup   fires on impl/** PR merge                          -> strips
+#             openspec:review from linked issue (GitHub itself
+#             auto-closes the issue via `Closes #<n>` in PR body)
 #
 # The respond job lets a human discuss the PR (comments + reviews) and then
 # hand control back to the agent by adding `openspec:start`. The agent reads
@@ -24,6 +27,7 @@
 #   issue labeled openspec:start              implement  issue in spec-ready
 #   spec/** PR closed with merge=true         implement  issue in spec-ready
 #   PR labeled openspec:start                 respond    branch matches spec/** or impl/**
+#   impl/** PR closed with merge=true         cleanup    (always — strips review label)
 #
 # -----------------------------------------------------------------------------
 # `openspec:start` on an issue — state dispatch
@@ -585,8 +589,10 @@ jobs:
             3. ARCHIVE — `openspec-archive-change` skill.
             4. OPEN CODE PR — commit on `impl/${{ steps.check.outputs.issue_number }}-<slug>`,
                title `feat: implement spec for #${{ steps.check.outputs.issue_number }} <short title>`.
-               PR body: `Refs #${{ steps.check.outputs.issue_number }}`, 2-4 sentence recap,
-               a sentence naming the skills, `---`, bulleted file-change list.
+               PR body: `Closes #${{ steps.check.outputs.issue_number }}` on its
+               own line (so merging the impl PR auto-closes the issue), then
+               a blank line, 2-4 sentence recap, a sentence naming the skills,
+               `---`, bulleted file-change list.
                Post one comment on the issue: one-paragraph recap, skills
                used, link to PR. Comment body MUST start with the literal
                line `${{ env.AGENT_COMMENT_MARKER }}` and end with `---`
@@ -825,3 +831,42 @@ jobs:
             echo "$REENGAGE_FOOTER"
           } > /tmp/comment.md
           gh issue comment "$PR_NUMBER" --repo "$REPO" --body-file /tmp/comment.md
+
+  # ---------------------------------------------------------------------------
+  # CLEANUP — impl/** PR merged -> strip openspec:review from linked issue.
+  # GitHub auto-closes the issue via the `Closes #<n>` link in the PR body;
+  # this job only handles the label that GitHub does not touch.
+  # ---------------------------------------------------------------------------
+  cleanup:
+    if: |
+      github.event_name == 'pull_request' &&
+      github.event.action == 'closed' &&
+      github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    concurrency:
+      group: openspec-flow-cleanup-${{ github.event.pull_request.number }}
+      cancel-in-progress: false
+
+    steps:
+      - name: Check branch matches impl/<n>-*
+        id: check
+        env:
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: |
+          if [[ ! "$HEAD_REF" =~ ^impl/([0-9]+)-(.+)$ ]]; then
+            echo "Head '$HEAD_REF' is not impl/<n>-* — skipping"
+            echo "run=false" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          echo "run=true" >> "$GITHUB_OUTPUT"
+          echo "issue_number=${BASH_REMATCH[1]}" >> "$GITHUB_OUTPUT"
+
+      - name: Remove openspec:review from linked issue
+        if: steps.check.outputs.run == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.AGENT_GITHUB_TOKEN || github.token }}
+          REPO: ${{ github.repository }}
+          ISSUE_NUMBER: ${{ steps.check.outputs.issue_number }}
+        run: |
+          gh issue edit "$ISSUE_NUMBER" --repo "$REPO" \
+            --remove-label "$LABEL_REVIEW" 2>/dev/null || true
