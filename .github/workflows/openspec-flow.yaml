@@ -21,8 +21,34 @@
 #   Event                                     Job        Condition
 #   issue assigned to AGENT_ASSIGNEE          plan       no lifecycle label set
 #   issue labeled openspec:start              plan       no lifecycle label set
+#   issue labeled openspec:start              implement  issue in spec-ready
 #   spec/** PR closed with merge=true         implement  issue in spec-ready
 #   PR labeled openspec:start                 respond    branch matches spec/** or impl/**
+#
+# -----------------------------------------------------------------------------
+# `openspec:start` on an issue — state dispatch
+# -----------------------------------------------------------------------------
+#   This label is the single manual trigger. Its effect depends on the
+#   issue's current lifecycle label:
+#
+#   +-------------------+-----------------------------------------------+
+#   | Current state     | openspec:start does                           |
+#   +-------------------+-----------------------------------------------+
+#   | none / cleared    | plan (open a spec PR)                         |
+#   | exploring         | silent skip — plan in flight                  |
+#   | spec-ready        | implement (open a code PR)                    |
+#   | implement         | silent skip — implement in flight             |
+#   | review            | nudge comment → direct the user to label the  |
+#   |                   | impl PR instead; respond job handles there    |
+#   | failed            | silent skip — clear label manually, then      |
+#   |                   | re-trigger (auto-retry is future work)        |
+#   +-------------------+-----------------------------------------------+
+#
+#   Dedupe: if implement fires from an issue-label event but an
+#   impl/<n>-* PR already exists (open or merged), the job posts a
+#   nudge pointing to the existing PR rather than starting duplicate
+#   work. `openspec:start` is always consumed at the start of a run
+#   (or when a nudge is posted) so it stays clickable.
 #
 # -----------------------------------------------------------------------------
 # Required secrets / labels / skills — same as before consolidation
@@ -89,6 +115,9 @@ jobs:
       - name: Check trigger (assignee or start label, plus idempotency)
         id: check
         env:
+          GH_TOKEN: ${{ secrets.AGENT_GITHUB_TOKEN || github.token }}
+          REPO: ${{ github.repository }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
           EVENT_ACTION: ${{ github.event.action }}
           ASSIGNEE_LOGIN: ${{ github.event.assignee.login }}
           ADDED_LABEL: ${{ github.event.label.name }}
@@ -113,9 +142,36 @@ jobs:
             exit 0
           fi
 
-          # Skip if any lifecycle label is already set. Clear them manually to re-run.
-          if echo ",$ISSUE_LABELS," | grep -qE ",(${LABEL_EXPLORING}|${LABEL_SPEC_READY}|${LABEL_IMPLEMENT}|${LABEL_REVIEW}|${LABEL_FAILED}),"; then
-            echo "Issue already in an openspec:* lifecycle state — skipping"
+          # spec-ready: implement job handles this trigger. Skip plan.
+          # review: impl PR is already open; nudge user to comment there.
+          # exploring/implement: work in flight; silent skip.
+          # failed: leave for manual cleanup (future: auto-retry).
+          if echo ",$ISSUE_LABELS," | grep -q ",$LABEL_REVIEW,"; then
+            echo "Issue is in $LABEL_REVIEW — nudging to impl PR"
+            impl_pr=$(gh pr list --repo "$REPO" \
+              --state all --search "head:impl/$ISSUE_NUMBER-" \
+              --json number,url --jq '.[0]' 2>/dev/null || echo "")
+            pr_url=$(echo "$impl_pr" | jq -r '.url // empty' 2>/dev/null)
+            {
+              echo "$AGENT_COMMENT_MARKER"
+              if [ -n "$pr_url" ]; then
+                echo "> Implementation is already under review at $pr_url."
+                echo "> To refine the implementation, comment on that PR and add \`$LABEL_START\` **there** — the respond job will pick up the discussion."
+              else
+                echo "> Issue is marked \`$LABEL_REVIEW\` but no \`impl/$ISSUE_NUMBER-*\` PR was found. Clear the label to retry implement."
+              fi
+              echo ""
+              echo "---"
+              echo "$REENGAGE_FOOTER"
+            } > /tmp/nudge.md
+            gh issue comment "$ISSUE_NUMBER" --repo "$REPO" --body-file /tmp/nudge.md
+            gh issue edit "$ISSUE_NUMBER" --repo "$REPO" --remove-label "$LABEL_START" 2>/dev/null || true
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if echo ",$ISSUE_LABELS," | grep -qE ",(${LABEL_EXPLORING}|${LABEL_SPEC_READY}|${LABEL_IMPLEMENT}|${LABEL_FAILED}),"; then
+            echo "Issue already in an openspec:* lifecycle state — skipping plan"
             echo "run=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -320,29 +376,89 @@ jobs:
   # IMPLEMENT — spec/** PR merged -> code PR
   # ---------------------------------------------------------------------------
   implement:
-    if: github.event_name == 'pull_request' && github.event.action == 'closed'
+    # Fires on two paths:
+    #   (a) proposal PR closed/merged — the original auto-forward trigger
+    #   (b) issue labeled openspec:start while in spec-ready — human asks to
+    #       kick off implementation (e.g. impl never ran, or spec was merged
+    #       before the flow existed). Dedupe against any existing impl PR.
+    if: |
+      (github.event_name == 'pull_request' && github.event.action == 'closed') ||
+      (github.event_name == 'issues' && github.event.action == 'labeled' && github.event.label.name == 'openspec:start')
     runs-on: ubuntu-latest
     timeout-minutes: 60
     concurrency:
-      group: openspec-flow-implement-${{ github.event.pull_request.number }}
+      group: openspec-flow-implement-${{ github.event.issue.number || github.event.pull_request.number }}
       cancel-in-progress: false
 
     steps:
-      - name: Check trigger (proposal PR merge)
+      - name: Check trigger (proposal PR merge or issue relabel)
         id: check
         env:
+          GH_TOKEN: ${{ secrets.AGENT_GITHUB_TOKEN || github.token }}
+          REPO: ${{ github.repository }}
+          EVENT_NAME: ${{ github.event_name }}
           MERGED: ${{ github.event.pull_request.merged }}
           HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          ISSUE_NUMBER_EVT: ${{ github.event.issue.number }}
+          ISSUE_LABELS: ${{ join(github.event.issue.labels.*.name, ',') }}
         run: |
-          if [ "$MERGED" != "true" ]; then
-            echo "run=false" >> "$GITHUB_OUTPUT"; exit 0
+          issue_number=""
+          change_slug=""
+
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            if [ "$MERGED" != "true" ]; then
+              echo "PR not merged — skipping"; echo "run=false" >> "$GITHUB_OUTPUT"; exit 0
+            fi
+            if [[ ! "$HEAD_REF" =~ ^spec/([0-9]+)-(.+)$ ]]; then
+              echo "PR head '$HEAD_REF' not spec/<n>-* — skipping"; echo "run=false" >> "$GITHUB_OUTPUT"; exit 0
+            fi
+            issue_number="${BASH_REMATCH[1]}"
+            change_slug="${BASH_REMATCH[2]}"
+          else
+            # issues.labeled with openspec:start — only implement when the
+            # issue is in spec-ready (plan job handles the unstarted case;
+            # nudge handles review; exploring/implement/failed silent-skip).
+            if ! echo ",$ISSUE_LABELS," | grep -q ",$LABEL_SPEC_READY,"; then
+              echo "Issue #$ISSUE_NUMBER_EVT not in $LABEL_SPEC_READY — skipping"; echo "run=false" >> "$GITHUB_OUTPUT"; exit 0
+            fi
+            issue_number="$ISSUE_NUMBER_EVT"
+            # Derive slug from the merged spec PR for this issue.
+            change_slug=$(gh pr list --repo "$REPO" --state merged \
+              --search "head:spec/$issue_number-" \
+              --json headRefName --jq '.[0].headRefName // empty' \
+              | sed -E "s|^spec/$issue_number-||")
+            if [ -z "$change_slug" ]; then
+              echo "::error::No merged spec/$issue_number-* PR found — cannot derive change slug"
+              gh issue comment "$issue_number" --repo "$REPO" \
+                --body "> No merged \`spec/$issue_number-*\` PR found. Cannot derive the change slug automatically."
+              gh issue edit "$issue_number" --repo "$REPO" --remove-label "$LABEL_START" 2>/dev/null || true
+              echo "run=false" >> "$GITHUB_OUTPUT"; exit 0
+            fi
+            # Dedupe: if an impl PR already exists (open or merged), nudge.
+            existing=$(gh pr list --repo "$REPO" --state all \
+              --search "head:impl/$issue_number-" \
+              --json url --jq '.[0].url // empty')
+            if [ -n "$existing" ]; then
+              echo "Impl PR already exists at $existing — nudging"
+              {
+                echo "$AGENT_COMMENT_MARKER"
+                echo "> Implementation PR already exists at $existing."
+                echo "> Add \`$LABEL_START\` on that PR to refine it."
+                echo ""
+                echo "---"
+                echo "$REENGAGE_FOOTER"
+              } > /tmp/nudge.md
+              gh issue comment "$issue_number" --repo "$REPO" --body-file /tmp/nudge.md
+              gh issue edit "$issue_number" --repo "$REPO" --remove-label "$LABEL_START" 2>/dev/null || true
+              echo "run=false" >> "$GITHUB_OUTPUT"; exit 0
+            fi
+            # Consume the start label — implement job now owns this run.
+            gh issue edit "$issue_number" --repo "$REPO" --remove-label "$LABEL_START" 2>/dev/null || true
           fi
-          if [[ ! "$HEAD_REF" =~ ^spec/([0-9]+)-(.+)$ ]]; then
-            echo "run=false" >> "$GITHUB_OUTPUT"; exit 0
-          fi
+
           echo "run=true" >> "$GITHUB_OUTPUT"
-          echo "issue_number=${BASH_REMATCH[1]}" >> "$GITHUB_OUTPUT"
-          echo "change_slug=${BASH_REMATCH[2]}" >> "$GITHUB_OUTPUT"
+          echo "issue_number=$issue_number" >> "$GITHUB_OUTPUT"
+          echo "change_slug=$change_slug" >> "$GITHUB_OUTPUT"
 
       - name: Verify issue is in spec-ready state
         id: verify-issue
@@ -458,8 +574,9 @@ jobs:
           PROMPT: |
             Drive issue #${{ steps.check.outputs.issue_number }} in
             ${{ github.repository }} through the OpenSpec implement stage.
-            The proposal PR (branch `${{ github.event.pull_request.head.ref }}`)
-            merged into main, so the change folder is on main.
+            The proposal PR for `spec/${{ steps.check.outputs.issue_number }}-${{ steps.check.outputs.change_slug }}`
+            has been merged into main, so the change folder
+            `openspec/changes/${{ steps.check.outputs.change_slug }}/` is on main.
 
             Run in a sub-agent called `${{ env.SUBAGENT_NAME }}`.
 
