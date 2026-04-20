@@ -21,8 +21,34 @@
 #   Event                                     Job        Condition
 #   issue assigned to AGENT_ASSIGNEE          plan       no lifecycle label set
 #   issue labeled openspec:start              plan       no lifecycle label set
+#   issue labeled openspec:start              implement  issue in spec-ready
 #   spec/** PR closed with merge=true         implement  issue in spec-ready
 #   PR labeled openspec:start                 respond    branch matches spec/** or impl/**
+#
+# -----------------------------------------------------------------------------
+# `openspec:start` on an issue — state dispatch
+# -----------------------------------------------------------------------------
+#   This label is the single manual trigger. Its effect depends on the
+#   issue's current lifecycle label:
+#
+#   +-------------------+-----------------------------------------------+
+#   | Current state     | openspec:start does                           |
+#   +-------------------+-----------------------------------------------+
+#   | none / cleared    | plan (open a spec PR)                         |
+#   | exploring         | silent skip — plan in flight                  |
+#   | spec-ready        | implement (open a code PR)                    |
+#   | implement         | silent skip — implement in flight             |
+#   | review            | nudge comment → direct the user to label the  |
+#   |                   | impl PR instead; respond job handles there    |
+#   | failed            | silent skip — clear label manually, then      |
+#   |                   | re-trigger (auto-retry is future work)        |
+#   +-------------------+-----------------------------------------------+
+#
+#   Dedupe: if implement fires from an issue-label event but an
+#   impl/<n>-* PR already exists (open or merged), the job posts a
+#   nudge pointing to the existing PR rather than starting duplicate
+#   work. `openspec:start` is always consumed at the start of a run
+#   (or when a nudge is posted) so it stays clickable.
 #
 # -----------------------------------------------------------------------------
 # Required secrets / labels / skills — same as before consolidation
