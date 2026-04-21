@@ -6,6 +6,11 @@
   <title>livedown</title>
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/tweetnacl@1.0.3/nacl-fast.min.js"></script>
+  <script type="module">
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+    mermaid.initialize({ startOnLoad: false });
+    window.mermaid = mermaid;
+  </script>
   <link  rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.17/codemirror.min.css">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.17/codemirror.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.17/mode/markdown/markdown.min.js"></script>
@@ -170,6 +175,13 @@
                                  color: #6a737d; margin: 0 0 1em; }
     #preview-inner a { color: #0366d6; }
     #preview-inner hr { border: none; border-top: 1px solid #e1e4e8; margin: 1.5em 0; }
+    #preview-inner svg { display: block; max-width: 100%; margin: 0 auto 1em; }
+    .mermaid-error {
+      background: #fff0f0; border: 1px solid #f38ba8; border-radius: 6px;
+      padding: 1rem; margin: 0 0 1em; color: #c0392b;
+      font-family: 'SFMono-Regular', Consolas, monospace; font-size: .85em;
+      white-space: pre-wrap; overflow-x: auto;
+    }
 
     /* ── Landing page ─────────────────────────────────────── */
     #landing {
@@ -715,7 +727,34 @@
 
   // ── Render preview ───────────────────────────────────────────
   function renderPreview(content) {
-    document.getElementById('preview-inner').innerHTML = marked.parse(content || '');
+    var inner = document.getElementById('preview-inner');
+    inner.innerHTML = marked.parse(content || '');
+
+    // Post-process: replace pre>code.language-mermaid blocks with mermaid divs
+    var codeBlocks = inner.querySelectorAll('pre > code.language-mermaid');
+    codeBlocks.forEach(function (code) {
+      var pre = code.parentElement;
+      var div = document.createElement('div');
+      div.className = 'mermaid';
+      div.textContent = code.textContent;
+      pre.parentNode.replaceChild(div, pre);
+    });
+
+    if (codeBlocks.length > 0 && window.mermaid) {
+      window.mermaid.run({ querySelector: '.mermaid' }).catch(function () {
+        // Render error fallback for any .mermaid divs that were not replaced by SVG
+        inner.querySelectorAll('.mermaid').forEach(function (el) {
+          if (!el.querySelector('svg')) {
+            var src = el.textContent;
+            el.innerHTML = '';
+            var errBox = document.createElement('div');
+            errBox.className = 'mermaid-error';
+            errBox.textContent = src;
+            el.appendChild(errBox);
+          }
+        });
+      });
+    }
   }
 
   // ── Remote update flash ──────────────────────────────────────
