@@ -12,6 +12,7 @@
 
   <p align="center">
     <a href="https://github.com/dwmkerr/livedown/actions/workflows/cicd.yaml"><img src="https://github.com/dwmkerr/livedown/actions/workflows/cicd.yaml/badge.svg" alt="cicd"></a>
+    <a href="https://github.com/dwmkerr/livedown/actions/workflows/deploy.yaml"><img src="https://github.com/dwmkerr/livedown/actions/workflows/deploy.yaml/badge.svg" alt="deploy"></a>
     <a href="https://www.npmjs.com/package/@dwmkerr/livedown"><img src="https://img.shields.io/npm/v/%40dwmkerr/livedown" alt="npm version"></a>
     <a href="https://codecov.io/gh/dwmkerr/livedown"><img src="https://codecov.io/gh/dwmkerr/livedown/graph/badge.svg" alt="codecov"></a>
   </p>
