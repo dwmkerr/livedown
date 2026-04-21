@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.1.4](https://github.com/dwmkerr/livedown/compare/v0.1.3...v0.1.4) (2026-04-21)
+
+
+### Bug Fixes
+
+* **ci:** split cicd + deploy, add partykit preflight and timeout ([#73](https://github.com/dwmkerr/livedown/issues/73)) ([bcdb4a1](https://github.com/dwmkerr/livedown/commit/bcdb4a19811109781050e53de57bddc527727038))
+* **implement:** dedupe ignores closed-unmerged impl PRs ([#71](https://github.com/dwmkerr/livedown/issues/71)) ([240e76d](https://github.com/dwmkerr/livedown/commit/240e76d5ba475e8af7ea0323d6a43c25f4504009))
+* **state-machine:** plan preflight + postflight + unmerged-close cleanup ([#69](https://github.com/dwmkerr/livedown/issues/69)) ([146c3ad](https://github.com/dwmkerr/livedown/commit/146c3ad7ffc145bf553ef6b92e3f237625092f66))
+
 ## [0.1.3](https://github.com/dwmkerr/livedown/compare/v0.1.2...v0.1.3) (2026-04-21)
 
 
