@@ -61,10 +61,17 @@ jobs:
 
   # When release-please cuts a release, kick off the external deploy.
   # Deploy publishes to npm and pushes the relay to PartyKit in parallel.
+  #
+  # `actions: write` is required so the default GITHUB_TOKEN can call
+  # `gh workflow run`; without it GitHub returns 403 "Resource not
+  # accessible by integration" on the dispatch endpoint.
   dispatch-deploy:
     needs: [release]
     if: needs.release.outputs.releases_created == 'true'
     runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: read
     steps:
       - uses: actions/checkout@v4
       - name: Dispatch deploy workflow
