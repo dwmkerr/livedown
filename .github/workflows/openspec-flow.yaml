@@ -316,7 +316,43 @@ jobs:
             Run the work in a sub-agent called `${{ env.SUBAGENT_NAME }}`
             (or a generic one if that name is empty).
 
-            1. EXPLORE — invoke the `openspec-explore` skill.
+            1. EXPLORE — invoke the `openspec-explore` skill
+               (installed at `.claude/skills/openspec-explore/SKILL.md`).
+
+               Explore has two jobs: (a) surface open questions, (b) get
+               grounded in real context. Do both.
+
+               Grounding — before speccing:
+
+               - If the issue references a GitHub repo, skill, plugin,
+                 action, library, or any other external code, clone it:
+                   `git clone --depth 1 <url> /tmp/<name>`
+                 Read the files that matter (README, action.yml, entry
+                 scripts, exported APIs). Cite specific paths in the
+                 spec when you rely on their behaviour.
+
+               - If the issue references an article, spec, or doc URL,
+                 fetch and read it. Quote the relevant passage in the
+                 spec's context section.
+
+               - If the expected interface does not exist in the cloned
+                 repo (no such script, no such export, no such flag),
+                 that is an open question, not a hand-wave — capture it.
+
+               Open questions:
+
+               - If explore surfaces questions that the issue body and
+                 the grounded content together do not answer, list them
+                 in the proposal's "Open Questions" section. Proceed to
+                 BUILD SPEC only if none of the questions are spec-
+                 blocking (i.e. the spec can still capture a coherent
+                 intent despite them).
+               - If any open question IS spec-blocking, stop. Do not
+                 guess. Post a comment on the issue listing the blocking
+                 questions and exit without opening a PR — the human
+                 will answer and re-trigger.
+               - If no open questions remain, proceed directly.
+
             2. BUILD SPEC — invoke the `openspec-ff-change` skill, deriving
                the change name from the issue title (kebab-case, <= 40 chars).
             3. OPEN PR — after `openspec validate <name> --strict` passes:
