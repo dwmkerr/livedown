@@ -73,6 +73,34 @@ Run the security agent (`.claude/agents/security.md`) before merging security-se
 - CLI changes should include terminal screenshots for non-trivial changes
 - Never add breadcrumb comments — only explain *why*, not *what*
 
+## Deployment
+
+Two workflows, one responsibility each:
+
+- `.github/workflows/cicd.yaml` — validates PRs + pushes to `main`, runs `release-please`, publishes to npm on release, then dispatches `deploy.yaml` with the new tag as `ref`.
+- `.github/workflows/deploy.yaml` — `workflow_dispatch` only. Checks out the requested `ref`, runs `npx partykit whoami` as a preflight, then `npx partykit deploy`. Job has `timeout-minutes: 5` so a bad token never burns Actions minutes.
+
+### Manual deploy
+
+```bash
+gh workflow run deploy.yaml --ref main                 # deploy tip of main
+gh workflow run deploy.yaml --ref v1.2.3 -f ref=v1.2.3 # deploy a specific release
+```
+
+Or: Actions tab → `deploy` → "Run workflow".
+
+### Secrets
+
+All set under repo Settings → Secrets and variables → Actions:
+
+- `NPM_TOKEN` — npm "Automation" classic token with write access on the `@dwmkerr` scope. Rotate at npmjs.com → Access Tokens. Used by `publish-npm`.
+- `PARTYKIT_TOKEN` — generated at partykit.io dashboard → settings. Used by `deploy.yaml` to push the relay. Rotate there and paste the new value into Actions secrets.
+- `CODECOV_TOKEN` — upload coverage from `validate` job.
+- `ANTHROPIC_API_KEY` — used by Claude-driven workflows (agent-actions, openspec-flow, security-review).
+- `AGENT_GITHUB_TOKEN` — PAT used by agent workflows that need repo write scope beyond the default `GITHUB_TOKEN`.
+
+`PARTYKIT_LOGIN` is the partykit username (currently `dwmkerr`). It is **not** a secret — it's hardcoded at the workflow `env:` level in `deploy.yaml`. Change it there if the relay account changes.
+
 ## Key Files
 
 - `src/token.ts` — Ed25519 keypair generation, signing, verification (tweetnacl)

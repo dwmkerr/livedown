@@ -2,28 +2,45 @@ name: deploy
 
 on:
   workflow_dispatch:
-  workflow_run:
-    workflows: [cicd]
-    types: [completed]
-    branches: [main]
+    inputs:
+      ref:
+        description: "Git ref (tag, branch, or SHA) to deploy. Defaults to the current ref the workflow was dispatched on."
+        required: false
+        type: string
 
 env:
   NODE_LTS_VERSION: 24.x
+  # PARTYKIT_LOGIN is a username, not a secret — hardcoded here so partykit
+  # CLI commands work consistently regardless of who/what triggers the deploy.
+  PARTYKIT_LOGIN: dwmkerr
 
 jobs:
   deploy-partykit:
     runs-on: ubuntu-latest
-    if: >
-      github.event_name == 'workflow_dispatch' ||
-      (github.event.workflow_run.conclusion == 'success' &&
-       github.event.workflow_run.event == 'push')
+    # Cap at 5 minutes so a misconfigured token can't silently burn Actions
+    # minutes waiting on an interactive prompt.
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_LTS_VERSION }}
           cache: "npm"
       - run: npm ci
-      - run: npx partykit deploy
+      # Preflight: fail fast with a clear error if PARTYKIT_TOKEN is missing
+      # or invalid rather than hanging inside `partykit deploy`.
+      - name: Preflight — partykit auth
         env:
           PARTYKIT_TOKEN: ${{ secrets.PARTYKIT_TOKEN }}
+        run: |
+          if [ -z "$PARTYKIT_TOKEN" ]; then
+            echo "::error::PARTYKIT_TOKEN secret is not set. Add it in repo Settings → Secrets and variables → Actions."
+            exit 1
+          fi
+          npx partykit whoami
+      - name: Deploy partykit
+        env:
+          PARTYKIT_TOKEN: ${{ secrets.PARTYKIT_TOKEN }}
+        run: npx partykit deploy
