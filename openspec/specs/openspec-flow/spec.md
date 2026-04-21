@@ -26,12 +26,30 @@ call `openspec-flow-preflight` before the agent step and
 action sets `skip=true`, the agent step and all subsequent steps in
 that job SHALL be skipped.
 
+The plan and implement jobs SHALL each include a post-agent step that
+scrapes the Claude session log using `dwmkerr/claude-toolkit` and injects
+a usage table (see `pr-usage-table` spec) into the PR body, positioned
+after the recap paragraph and before the `---` separator. The agent
+prompts SHALL NOT be modified to self-report usage; the session log is the
+authoritative source.
+
 #### Scenario: Plan job fires on issue assignment or start label
 - **WHEN** a GitHub issue is assigned to the agent login, or the
   `openspec:start` label is added to an issue with no lifecycle label
 - **THEN** the `plan` job runs: preflight is called first; if `skip=false`,
   the agent runs; postflight is called after the agent; if postflight
-  fails, the handle-failure step runs
+  fails, the handle-failure step runs; a post-agent step scrapes the
+  session log via `dwmkerr/claude-toolkit` and injects a usage table
+  between `<!-- openspec-flow-usage-table -->` and
+  `<!-- /openspec-flow-usage-table -->` markers into the spec PR body
+
+#### Scenario: Implement job injects usage table into impl PR body
+- **WHEN** the implement job opens an `impl/<n>-<slug>` code PR
+- **THEN** a post-agent step scrapes the session log via
+  `dwmkerr/claude-toolkit` and injects a usage table between
+  `<!-- openspec-flow-usage-table -->` and
+  `<!-- /openspec-flow-usage-table -->` markers into the impl PR body,
+  positioned after the recap paragraph and before the `---` separator
 
 #### Scenario: Preflight skip aborts agent run cleanly
 - **WHEN** the preflight action sets `skip=true` for any job
