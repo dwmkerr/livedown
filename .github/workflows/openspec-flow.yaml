@@ -662,6 +662,27 @@ jobs:
           export ALL_INPUTS
           bun run /tmp/claude-code-action/src/entrypoints/run.ts
 
+      # Postflight: agent often reports success but produces no impl PR
+      # (silent no-op — #48). Assert the expected artifact exists;
+      # fail the step if it does not, so the failure handler flips the
+      # label to openspec:failed rather than the misleading
+      # openspec:review. Minimal inline check until #48 lands properly.
+      - name: Postflight — assert impl PR exists
+        if: success() && steps.verify-issue.outputs.run == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.AGENT_GITHUB_TOKEN || github.token }}
+          REPO: ${{ github.repository }}
+          ISSUE_NUMBER: ${{ steps.check.outputs.issue_number }}
+        run: |
+          pr=$(gh pr list --repo "$REPO" --state open \
+            --search "head:impl/$ISSUE_NUMBER-" \
+            --json number --jq '.[0].number // empty')
+          if [ -z "$pr" ]; then
+            echo "::error::Implement agent reported success but no impl/$ISSUE_NUMBER-* PR was opened. Silent no-op (see #48)."
+            exit 1
+          fi
+          echo "Postflight ok — impl PR #$pr exists."
+
       - name: Flip label to openspec:review + breadcrumb spec PR
         if: success() && steps.verify-issue.outputs.run == 'true'
         env:
