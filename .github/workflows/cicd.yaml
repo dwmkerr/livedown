@@ -1,3 +1,14 @@
+# CI/CD — internal to the repo.
+#
+# Validates PRs and pushes to main. On main, runs release-please to cut a
+# release (tag + GitHub Release + CHANGELOG + version bump in package.json).
+# When release-please creates a release, dispatches the external `deploy`
+# workflow, which is what actually pushes artefacts to npm and PartyKit.
+#
+# Responsibility split:
+#   cicd.yaml   — internal: validate, cut release (repo-state changes)
+#   deploy.yaml — external: publish to npm + deploy relay to PartyKit
+
 name: cicd
 
 on:
@@ -48,30 +59,10 @@ jobs:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
 
-  publish-npm:
-    needs: [release]
-    if: needs.release.outputs.releases_created == 'true'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_LTS_VERSION }}
-          registry-url: "https://registry.npmjs.org"
-      - run: npm ci
-      - run: npm run build
-      - run: npm publish --provenance
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-  # Fire the deploy workflow once the release has been published to npm.
-  # Keeping deploy in a separate workflow lets us re-run just the partykit
-  # deploy manually without re-running the full release pipeline.
+  # When release-please cuts a release, kick off the external deploy.
+  # Deploy publishes to npm and pushes the relay to PartyKit in parallel.
   dispatch-deploy:
-    needs: [release, publish-npm]
+    needs: [release]
     if: needs.release.outputs.releases_created == 'true'
     runs-on: ubuntu-latest
     steps:

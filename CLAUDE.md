@@ -75,10 +75,10 @@ Run the security agent (`.claude/agents/security.md`) before merging security-se
 
 ## Deployment
 
-Two workflows, one responsibility each:
+Two workflows, one responsibility each. **Internal vs external** is the split:
 
-- `.github/workflows/cicd.yaml` — validates PRs + pushes to `main`, runs `release-please`, publishes to npm on release, then dispatches `deploy.yaml` with the new tag as `ref`.
-- `.github/workflows/deploy.yaml` — `workflow_dispatch` only. Checks out the requested `ref`, runs `npx partykit whoami` as a preflight, then `npx partykit deploy`. Job has `timeout-minutes: 5` so a bad token never burns Actions minutes.
+- `.github/workflows/cicd.yaml` — **internal to the repo**. Validates PRs + pushes to `main`, then runs `release-please` to cut a release (tag + GitHub Release + CHANGELOG + version bump). When a release is cut, dispatches `deploy.yaml` with the new tag as `ref`. Nothing leaves the repo from this workflow.
+- `.github/workflows/deploy.yaml` — **external**. Publishes to npm (`deploy-npm` job) and deploys the relay to PartyKit (`deploy-partykit` job) in parallel. Both jobs preflight their auth (`npm whoami`, `npx partykit whoami`) and carry `timeout-minutes` caps so a misconfigured token surfaces as a fast auth failure rather than a hang.
 
 ### Manual deploy
 
@@ -93,8 +93,8 @@ Or: Actions tab → `deploy` → "Run workflow".
 
 All set under repo Settings → Secrets and variables → Actions:
 
-- `NPM_TOKEN` — npm "Automation" classic token with write access on the `@dwmkerr` scope. Rotate at npmjs.com → Access Tokens. Used by `publish-npm`.
-- `PARTYKIT_TOKEN` — generated at partykit.io dashboard → settings. Used by `deploy.yaml` to push the relay. Rotate there and paste the new value into Actions secrets.
+- `NPM_TOKEN` — npm "Automation" / granular token with `package: write` on the `@dwmkerr` scope. Generate at npmjs.com → Access Tokens. Used by `deploy-npm` job in `deploy.yaml`.
+- `PARTYKIT_TOKEN` — generate with `npx partykit token generate` on a machine logged in as the relay owner (`dwmkerr`). Used by `deploy-partykit` job in `deploy.yaml`. Rotate by regenerating and pasting the new value into Actions secrets.
 - `CODECOV_TOKEN` — upload coverage from `validate` job.
 - `ANTHROPIC_API_KEY` — used by Claude-driven workflows (agent-actions, openspec-flow, security-review).
 - `AGENT_GITHUB_TOKEN` — PAT used by agent workflows that need repo write scope beyond the default `GITHUB_TOKEN`.

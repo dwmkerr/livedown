@@ -1,3 +1,24 @@
+# Deploy — external.
+#
+# Publishes the release artefacts to the outside world:
+#   - npm:      @dwmkerr/livedown
+#   - PartyKit: livedown.dwmkerr.partykit.dev
+#
+# Both jobs run in parallel. A failure in one does not roll back the other
+# (npm publish is effectively immutable), but keeping them independent means
+# a broken relay deploy can be retried in isolation with `workflow_dispatch`
+# without re-publishing npm.
+#
+# Trigger paths:
+#   - Automatic: dispatched from cicd.yaml after release-please cuts a tag.
+#   - Manual:    `gh workflow run deploy.yaml --ref <tag>` or Actions UI.
+#
+# Secrets:
+#   NPM_TOKEN        — npm "Automation" token with write on the `@dwmkerr` scope.
+#   PARTYKIT_TOKEN   — `npx partykit token generate` on a machine logged in
+#                      as the relay owner (username must match PARTYKIT_LOGIN
+#                      below).
+
 name: deploy
 
 on:
@@ -15,6 +36,36 @@ env:
   PARTYKIT_LOGIN: dwmkerr
 
 jobs:
+  deploy-npm:
+    runs-on: ubuntu-latest
+    # Caps protect against npm CLI hangs or transparency-log delays.
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_LTS_VERSION }}
+          registry-url: "https://registry.npmjs.org"
+          cache: "npm"
+      - run: npm ci
+      - run: npm run build
+      # Preflight: confirm the NPM token is valid before attempting publish,
+      # so a stale/wrong token surfaces as an obvious auth failure rather than
+      # a confusing 404 on PUT.
+      - name: Preflight — npm auth
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm whoami
+      - name: Publish to npm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --provenance
+
   deploy-partykit:
     runs-on: ubuntu-latest
     # Cap at 5 minutes so a misconfigured token can't silently burn Actions
