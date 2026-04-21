@@ -541,6 +541,10 @@ jobs:
           GH_TOKEN: ${{ secrets.AGENT_GITHUB_TOKEN || github.token }}
           REPO: ${{ github.repository }}
           ISSUE_NUMBER: ${{ steps.check.outputs.issue_number }}
+          # Populated when implement fires from a spec PR merge event; empty
+          # when fired from an issue relabel. Used to drop a breadcrumb on
+          # the merged spec PR so it is visible there too.
+          SPEC_PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           RUN_URL="${{ github.server_url }}/$REPO/actions/runs/${{ github.run_id }}"
           gh api -X POST "repos/$REPO/issues/$ISSUE_NUMBER/reactions" -f content="rocket" >/dev/null || true
@@ -554,6 +558,16 @@ jobs:
             echo "$REENGAGE_FOOTER"
           } > /tmp/comment.md
           gh issue comment "$ISSUE_NUMBER" --repo "$REPO" --body-file /tmp/comment.md
+          if [ -n "$SPEC_PR_NUMBER" ]; then
+            {
+              echo "$AGENT_COMMENT_MARKER"
+              echo "> Implement stage starting for issue #$ISSUE_NUMBER. [View run]($RUN_URL)"
+              echo ""
+              echo "---"
+              echo "$REENGAGE_FOOTER"
+            } > /tmp/pr-comment.md
+            gh pr comment "$SPEC_PR_NUMBER" --repo "$REPO" --body-file /tmp/pr-comment.md || true
+          fi
 
       - name: Checkout repository
         if: steps.verify-issue.outputs.run == 'true'
@@ -648,15 +662,34 @@ jobs:
           export ALL_INPUTS
           bun run /tmp/claude-code-action/src/entrypoints/run.ts
 
-      - name: Flip label to openspec:review
+      - name: Flip label to openspec:review + breadcrumb spec PR
         if: success() && steps.verify-issue.outputs.run == 'true'
         env:
           GH_TOKEN: ${{ secrets.AGENT_GITHUB_TOKEN || github.token }}
           REPO: ${{ github.repository }}
           ISSUE_NUMBER: ${{ steps.check.outputs.issue_number }}
+          SPEC_PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           gh issue edit "$ISSUE_NUMBER" --repo "$REPO" \
             --remove-label "$LABEL_IMPLEMENT" --add-label "$LABEL_REVIEW"
+          if [ -n "$SPEC_PR_NUMBER" ]; then
+            # Find the impl PR we just opened to link it on the spec PR.
+            impl_url=$(gh pr list --repo "$REPO" --state open \
+              --search "head:impl/$ISSUE_NUMBER-" \
+              --json url --jq '.[0].url // empty')
+            {
+              echo "$AGENT_COMMENT_MARKER"
+              if [ -n "$impl_url" ]; then
+                echo "> Implement stage complete — impl PR opened at $impl_url."
+              else
+                echo "> Implement stage reported success but no impl PR was found (see #48)."
+              fi
+              echo ""
+              echo "---"
+              echo "$REENGAGE_FOOTER"
+            } > /tmp/pr-comment.md
+            gh pr comment "$SPEC_PR_NUMBER" --repo "$REPO" --body-file /tmp/pr-comment.md || true
+          fi
 
       - name: Handle failure
         if: failure() && steps.verify-issue.outputs.run == 'true'
@@ -664,6 +697,7 @@ jobs:
           GH_TOKEN: ${{ secrets.AGENT_GITHUB_TOKEN || github.token }}
           REPO: ${{ github.repository }}
           ISSUE_NUMBER: ${{ steps.check.outputs.issue_number }}
+          SPEC_PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           RUN_URL="${{ github.server_url }}/$REPO/actions/runs/${{ github.run_id }}"
           gh issue edit "$ISSUE_NUMBER" --repo "$REPO" \
@@ -676,6 +710,9 @@ jobs:
             echo "$REENGAGE_FOOTER"
           } > /tmp/comment.md
           gh issue comment "$ISSUE_NUMBER" --repo "$REPO" --body-file /tmp/comment.md
+          if [ -n "$SPEC_PR_NUMBER" ]; then
+            gh pr comment "$SPEC_PR_NUMBER" --repo "$REPO" --body-file /tmp/comment.md || true
+          fi
 
   # ---------------------------------------------------------------------------
   # RESPOND — openspec:start on a PR -> refine based on discussion
