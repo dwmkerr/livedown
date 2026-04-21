@@ -317,6 +317,29 @@ jobs:
             (or a generic one if that name is empty).
 
             1. EXPLORE — invoke the `openspec-explore` skill.
+
+               Good plans need real context. Do not write specs grounded
+               only in what you remember or guess. Before speccing:
+
+               - If the issue references a GitHub repo, skill, plugin,
+                 action, library, or any other external code, clone it:
+                   `git clone --depth 1 <url> /tmp/<name>`
+                 Read the files that matter (README, action.yml, entry
+                 scripts, exported APIs). Cite specific paths in the
+                 spec when you rely on their behaviour.
+
+               - If the issue references an article, spec, or doc URL,
+                 fetch and read it. Quote the relevant passage in the
+                 spec's context section.
+
+               - If the expected interface does not exist in the cloned
+                 repo (no such script, no such export, no such flag),
+                 say so explicitly in the spec's "Open Questions" or
+                 "Blockers" section. Do not hand-wave.
+
+               Lean on `openspec-explore` to structure this — it is the
+               research step, not a formality.
+
             2. BUILD SPEC — invoke the `openspec-ff-change` skill, deriving
                the change name from the issue title (kebab-case, <= 40 chars).
             3. OPEN PR — after `openspec validate <name> --strict` passes:
