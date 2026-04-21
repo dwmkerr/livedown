@@ -6,9 +6,9 @@ When an OpenSpec agent runs (plan or implement), it invokes sub-agents and skill
 
 - Both spec PR bodies and impl PR bodies will contain an HTML-delimited usage table after the recap paragraph and before the `---` separator.
 - The table is wrapped in `<!-- openspec-flow-usage-table -->` … `<!-- /openspec-flow-usage-table -->` markers so it can be found and updated by automation.
-- The agent self-reports the steps it took (sub-agent name, skills used, CLI calls) as rows in the table.
+- The usage data is sourced from the Claude session logs, scraped after each agent run using `dwmkerr/claude-toolkit`. Agent self-reporting is **not** used — session logs are the authoritative source.
 - Table columns: **Step**, **Agent/Skill**, **Detail**.
-- The `openspec-flow` workflow prompts for the plan and implement agent jobs will be updated to include instructions for producing the table.
+- The `openspec-flow` workflow adds a post-agent step that uses `dwmkerr/claude-toolkit` to scrape the session log and inject the usage table into the PR body.
 
 ## Capabilities
 
@@ -22,6 +22,7 @@ When an OpenSpec agent runs (plan or implement), it invokes sub-agents and skill
 
 ## Impact
 
-- `.github/workflows/openspec-flow.yaml` — agent prompt strings for the plan and implement jobs.
-- Possibly agent skill files (`.claude/skills/`) if they contain PR body templates.
-- No runtime dependencies added; the table is plain Markdown/HTML rendered by GitHub.
+- `.github/workflows/openspec-flow.yaml` — a post-agent step is added to the plan and implement jobs to scrape session logs and inject the usage table into the PR body.
+- `dwmkerr/claude-toolkit` is added as a dependency (used in the workflow step to parse session logs).
+- No changes to agent prompt strings are required; the table is produced by the post-processing step, not the agent.
+- No agent skill files need updating.

@@ -10,26 +10,30 @@ SHALL be required for any lifecycle stage. Repeated operation blocks
 extracted into local composite actions under `.github/actions/` and
 called via `uses:` rather than duplicated inline.
 
-The agent prompts used by the plan and implement jobs SHALL instruct the
-agent to include a usage table (see `pr-usage-table` spec) in every PR
-body it creates, positioned after the recap paragraph and before the `---`
-separator.
+The plan and implement jobs SHALL each include a post-agent step that
+scrapes the Claude session log using `dwmkerr/claude-toolkit` and injects
+a usage table (see `pr-usage-table` spec) into the PR body, positioned
+after the recap paragraph and before the `---` separator. The agent
+prompts SHALL NOT be modified to self-report usage; the session log is the
+authoritative source.
 
 #### Scenario: Plan job fires on issue assignment or start label
 
 - **WHEN** a GitHub issue is assigned to the agent login, or the
   `openspec:start` label is added to an issue with no lifecycle label
-- **THEN** the `plan` job runs and opens a `spec/<n>-<slug>` proposal PR
-  whose body contains a usage table between `<!-- openspec-flow-usage-table -->`
-  and `<!-- /openspec-flow-usage-table -->` markers
+- **THEN** the `plan` job runs, opens a `spec/<n>-<slug>` proposal PR,
+  and a post-agent step scrapes the session log via `dwmkerr/claude-toolkit`
+  and injects a usage table between `<!-- openspec-flow-usage-table -->`
+  and `<!-- /openspec-flow-usage-table -->` markers into the PR body
 
 #### Scenario: Implement job fires on proposal PR merge
 
 - **WHEN** a PR whose head branch matches `spec/<n>-<slug>` is merged
   into main and the linked issue is in `openspec:spec-ready`
-- **THEN** the `implement` job runs and opens an `impl/<n>-<slug>` code PR
-  whose body contains a usage table between `<!-- openspec-flow-usage-table -->`
-  and `<!-- /openspec-flow-usage-table -->` markers
+- **THEN** the `implement` job runs, opens an `impl/<n>-<slug>` code PR,
+  and a post-agent step scrapes the session log via `dwmkerr/claude-toolkit`
+  and injects a usage table between `<!-- openspec-flow-usage-table -->`
+  and `<!-- /openspec-flow-usage-table -->` markers into the PR body
 
 #### Scenario: Respond job fires on openspec:start label on a PR
 
