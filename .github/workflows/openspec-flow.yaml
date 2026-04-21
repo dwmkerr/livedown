@@ -180,6 +180,30 @@ jobs:
             exit 0
           fi
 
+          # Preflight: if a spec PR for this issue has already been merged,
+          # plan has nothing to do — running it would scaffold a change
+          # folder that already exists on main, producing an empty diff
+          # (see #52 / PR #64). Nudge the user instead.
+          merged_spec=$(gh pr list --repo "$REPO" --state merged \
+            --search "head:spec/$ISSUE_NUMBER-" \
+            --json url --jq '.[0].url // empty')
+          if [ -n "$merged_spec" ]; then
+            echo "Spec already merged at $merged_spec — skipping plan"
+            {
+              echo "$AGENT_COMMENT_MARKER"
+              echo "> Spec for this issue is already merged at $merged_spec."
+              echo "> If you want to implement, set this issue to \`$LABEL_SPEC_READY\` and add \`$LABEL_START\` — the implement job will pick it up."
+              echo "> If you want to re-open the spec for changes, comment on the merged PR and open a new change explicitly."
+              echo ""
+              echo "---"
+              echo "$REENGAGE_FOOTER"
+            } > /tmp/nudge.md
+            gh issue comment "$ISSUE_NUMBER" --repo "$REPO" --body-file /tmp/nudge.md
+            gh issue edit "$ISSUE_NUMBER" --repo "$REPO" --remove-label "$LABEL_START" 2>/dev/null || true
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
           echo "Triggered by $fired"
           echo "run=true" >> "$GITHUB_OUTPUT"
 
@@ -382,6 +406,35 @@ jobs:
             '{prompt: $prompt, anthropic_api_key: $api_key, github_token: $gh_token, claude_args: $claude_args}')"
           export ALL_INPUTS
           bun run /tmp/claude-code-action/src/entrypoints/run.ts
+
+      # Postflight: plan agent must open a spec PR with at least one file
+      # change. Empty diffs can happen when the change folder already
+      # exists on main and ff-change silently no-ops (see #52 / PR #64).
+      # If no PR exists, or the PR is empty, fail the step so the failure
+      # handler flips openspec:failed rather than advertising a fake
+      # openspec:spec-ready.
+      - name: Postflight — assert spec PR exists + non-empty
+        if: success() && steps.check.outputs.run == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.AGENT_GITHUB_TOKEN || github.token }}
+          REPO: ${{ github.repository }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          pr=$(gh pr list --repo "$REPO" --state open \
+            --search "head:spec/$ISSUE_NUMBER-" \
+            --json number --jq '.[0].number // empty')
+          if [ -z "$pr" ]; then
+            echo "::error::Plan agent reported success but no open spec/$ISSUE_NUMBER-* PR exists."
+            exit 1
+          fi
+          files=$(gh pr view "$pr" --repo "$REPO" --json files --jq '.files | length')
+          if [ "$files" -eq 0 ]; then
+            echo "::error::Plan agent opened spec PR #$pr but it has zero file changes."
+            gh pr close "$pr" --repo "$REPO" --delete-branch \
+              --comment "Closed by plan postflight — empty diff." || true
+            exit 1
+          fi
+          echo "Postflight ok — spec PR #$pr with $files file(s)."
 
       - name: Flip label to openspec:spec-ready
         if: success() && steps.check.outputs.run == 'true'
@@ -927,15 +980,19 @@ jobs:
           gh issue comment "$PR_NUMBER" --repo "$REPO" --body-file /tmp/comment.md
 
   # ---------------------------------------------------------------------------
-  # CLEANUP — impl/** PR merged -> strip openspec:review from linked issue.
-  # GitHub auto-closes the issue via the `Closes #<n>` link in the PR body;
-  # this job only handles the label that GitHub does not touch.
+  # CLEANUP — impl/** PR closed -> reset the linked issue's label state.
+  #
+  # Two cases:
+  #   1. Merged: strip openspec:review. GitHub auto-closes the issue via the
+  #      `Closes #<n>` link in the PR body; we only own the label.
+  #   2. Closed unmerged: strip openspec:review and restore openspec:spec-ready
+  #      so the user can retry implement without a fake `review` label lying
+  #      on the issue (see state-machine bug around #52 / PR #62).
   # ---------------------------------------------------------------------------
   cleanup:
     if: |
       github.event_name == 'pull_request' &&
-      github.event.action == 'closed' &&
-      github.event.pull_request.merged == true
+      github.event.action == 'closed'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     concurrency:
@@ -947,20 +1004,45 @@ jobs:
         id: check
         env:
           HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          MERGED: ${{ github.event.pull_request.merged }}
         run: |
           if [[ ! "$HEAD_REF" =~ ^impl/([0-9]+)-(.+)$ ]]; then
             echo "Head '$HEAD_REF' is not impl/<n>-* — skipping"
             echo "run=false" >> "$GITHUB_OUTPUT"; exit 0
           fi
           echo "run=true" >> "$GITHUB_OUTPUT"
+          echo "merged=$MERGED" >> "$GITHUB_OUTPUT"
           echo "issue_number=${BASH_REMATCH[1]}" >> "$GITHUB_OUTPUT"
 
-      - name: Remove openspec:review from linked issue
+      - name: Reset linked issue label state
         if: steps.check.outputs.run == 'true'
         env:
           GH_TOKEN: ${{ secrets.AGENT_GITHUB_TOKEN || github.token }}
           REPO: ${{ github.repository }}
           ISSUE_NUMBER: ${{ steps.check.outputs.issue_number }}
+          MERGED: ${{ steps.check.outputs.merged }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
+          # Always strip stale in-flight labels.
           gh issue edit "$ISSUE_NUMBER" --repo "$REPO" \
-            --remove-label "$LABEL_REVIEW" 2>/dev/null || true
+            --remove-label "$LABEL_REVIEW" \
+            --remove-label "$LABEL_IMPLEMENT" 2>/dev/null || true
+
+          if [ "$MERGED" = "true" ]; then
+            # Merge path — issue is closed by GitHub via `Closes #<n>`; no
+            # further label action needed.
+            echo "Impl PR merged — labels cleared."
+          else
+            # Unmerged close — restore spec-ready so implement can be retried.
+            gh issue edit "$ISSUE_NUMBER" --repo "$REPO" \
+              --add-label "$LABEL_SPEC_READY" 2>/dev/null || true
+            {
+              echo "$AGENT_COMMENT_MARKER"
+              echo "> Impl PR #$PR_NUMBER was closed without merging."
+              echo "> Issue reset to \`$LABEL_SPEC_READY\`. Add \`$LABEL_START\` to retry implement."
+              echo ""
+              echo "---"
+              echo "$REENGAGE_FOOTER"
+            } > /tmp/nudge.md
+            gh issue comment "$ISSUE_NUMBER" --repo "$REPO" --body-file /tmp/nudge.md || true
+          fi
