@@ -152,9 +152,12 @@ jobs:
           # failed: leave for manual cleanup (future: auto-retry).
           if echo ",$ISSUE_LABELS," | grep -q ",$LABEL_REVIEW,"; then
             echo "Issue is in $LABEL_REVIEW — nudging to impl PR"
+            # Only open or merged PRs count — a closed-unmerged PR is not
+            # something the user should be directed to comment on.
             impl_pr=$(gh pr list --repo "$REPO" \
               --state all --search "head:impl/$ISSUE_NUMBER-" \
-              --json number,url --jq '.[0]' 2>/dev/null || echo "")
+              --json number,url,state,mergedAt \
+              --jq '[.[] | select(.state == "OPEN" or .mergedAt != null)] | .[0] // empty' 2>/dev/null || echo "")
             pr_url=$(echo "$impl_pr" | jq -r '.url // empty' 2>/dev/null)
             {
               echo "$AGENT_COMMENT_MARKER"
@@ -527,10 +530,14 @@ jobs:
               gh issue edit "$issue_number" --repo "$REPO" --remove-label "$LABEL_START" 2>/dev/null || true
               echo "run=false" >> "$GITHUB_OUTPUT"; exit 0
             fi
-            # Dedupe: if an impl PR already exists (open or merged), nudge.
+            # Dedupe: only open or merged impl PRs block retry. A closed-
+            # unmerged PR (e.g. abandoned by a reviewer) should NOT prevent
+            # the user from re-triggering implement — otherwise issue #52
+            # behaviour recurs.
             existing=$(gh pr list --repo "$REPO" --state all \
               --search "head:impl/$issue_number-" \
-              --json url --jq '.[0].url // empty')
+              --json url,state,mergedAt \
+              --jq '[.[] | select(.state == "OPEN" or .mergedAt != null)] | .[0].url // empty')
             if [ -n "$existing" ]; then
               echo "Impl PR already exists at $existing — nudging"
               {
