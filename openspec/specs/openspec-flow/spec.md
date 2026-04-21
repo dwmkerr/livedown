@@ -30,8 +30,11 @@ that job SHALL be skipped.
 - **WHEN** a GitHub issue is assigned to the agent login, or the
   `openspec:start` label is added to an issue with no lifecycle label
 - **THEN** the `plan` job runs: preflight is called first; if `skip=false`,
-  the agent runs; postflight is called after the agent; if postflight
-  fails, the handle-failure step runs
+  the agent runs; postflight is called after the agent; a post-agent step
+  scrapes the session log via `dwmkerr/claude-toolkit` and injects a usage
+  table between `<!-- openspec-flow-usage-table -->` and
+  `<!-- /openspec-flow-usage-table -->` markers into the PR body; if
+  postflight fails, the handle-failure step runs
 
 #### Scenario: Preflight skip aborts agent run cleanly
 - **WHEN** the preflight action sets `skip=true` for any job
@@ -49,7 +52,10 @@ that job SHALL be skipped.
 - **WHEN** a PR whose head branch matches `spec/<n>-<slug>` is merged
   into main and the linked issue is in `openspec:spec-ready`
 - **THEN** the `implement` job runs with the same preflight/postflight
-  guards as the plan job
+  guards as the plan job; a post-agent step scrapes the session log via
+  `dwmkerr/claude-toolkit` and injects a usage table between
+  `<!-- openspec-flow-usage-table -->` and
+  `<!-- /openspec-flow-usage-table -->` markers into the PR body
 
 #### Scenario: Respond job fires on openspec:start label on a PR
 - **WHEN** the `openspec:start` label is added to a PR whose branch
@@ -73,6 +79,30 @@ that job SHALL be skipped.
 - **WHEN** a job is about to call any local composite action
 - **THEN** `actions/checkout` SHALL have already run in that job so the
   action files are present on disk
+
+### Requirement: Plan and implement jobs inject a usage table into the PR body
+
+After each agent run in the plan and implement jobs, a post-agent step SHALL
+scrape the Claude session log using `dwmkerr/claude-toolkit` and inject a
+usage table into the PR body. The table format and marker requirements are
+defined in the `pr-usage-table` spec. The agent prompts SHALL NOT be modified
+to self-report usage; the session log is the authoritative source.
+
+#### Scenario: Post-agent step injects usage table into spec PR
+
+- **WHEN** the plan job agent step completes successfully
+- **THEN** a post-agent step SHALL run `dwmkerr/claude-toolkit` against the
+  session log, format the output as a `| Step | Agent/Skill | Detail |` table,
+  and inject it between `<!-- openspec-flow-usage-table -->` and
+  `<!-- /openspec-flow-usage-table -->` markers in the spec PR body
+
+#### Scenario: Post-agent step injects usage table into impl PR
+
+- **WHEN** the implement job agent step completes successfully
+- **THEN** a post-agent step SHALL run `dwmkerr/claude-toolkit` against the
+  session log, format the output as a `| Step | Agent/Skill | Detail |` table,
+  and inject it between `<!-- openspec-flow-usage-table -->` and
+  `<!-- /openspec-flow-usage-table -->` markers in the impl PR body
 
 ### Requirement: No behaviour change from consolidation
 
