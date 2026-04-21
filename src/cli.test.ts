@@ -10,7 +10,6 @@ describe("cli", () => {
     });
     expect(output).toContain("livedown");
     expect(output).toContain("share");
-    expect(output).toContain("open");
   });
 
   it("should show version", () => {

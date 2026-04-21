@@ -146,15 +146,6 @@ program
   .option("-k, --edit-key <key>", "Edit key (auto-generated if omitted)")
   .action(startSharing);
 
-program
-  .command("open")
-  .description("Open a shared document in the browser")
-  .argument("<url>", "Livedown viewer URL")
-  .action(async (url: string) => {
-    const open = (await import("open")).default;
-    await open(url);
-  });
-
 function fileCompleter(line: string): [string[], string] {
   // Determine the directory to list and the prefix to filter by.
   // - Empty input → list current directory

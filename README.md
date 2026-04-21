@@ -41,14 +41,6 @@ Options:
 - `-e, --editor <name>` — Your name shown to viewers
 - `-k, --edit-key <key>` — Edit key (auto-generated if omitted)
 
-### `livedown open <url>`
-
-Open a shared document in the browser.
-
-```bash
-livedown open https://livedown.dwmkerr.partykit.dev/#abc123/notes.md
-```
-
 ## Docker
 
 Run Livedown without installing Node.js by using the published Docker image.
