@@ -81,7 +81,17 @@ on:
 
 env:
   AGENT_ASSIGNEE: "dwmkerr-agent"
-  SUBAGENT_NAME: "openspec-flow-agent"
+  # Name of a sub-agent that the flow prompts tell Claude to delegate to.
+  # Sourced from the repo/org variable `OPENSPEC_FLOW_SUBAGENT_NAME` so
+  # each project decides in its own Settings → Actions → Variables.
+  # Unset / empty ⇒ no sub-agent delegation instruction is included in
+  # the prompts; Claude does the work directly (with access to project
+  # CLAUDE.md). When set, the operator is responsible for creating
+  # `.claude/agents/<name>.md` with the rules that sub-agent should
+  # follow — project-specific sub-agent configuration is not auto-
+  # inherited from CLAUDE.md because Task-spawned sub-agents get a
+  # fresh context.
+  SUBAGENT_NAME: ${{ vars.OPENSPEC_FLOW_SUBAGENT_NAME }}
   CLAUDE_CODE_ACTION_REF: "v1.0.79"
   OPENSPEC_CLI_VERSION: "latest"
   LABEL_START: "openspec:start"
@@ -350,9 +360,9 @@ jobs:
             Drive issue #${{ github.event.issue.number }} in
             ${{ github.repository }} to a draft OpenSpec proposal PR.
             Issue title: "${{ github.event.issue.title }}"
+            ${{ env.SUBAGENT_NAME && format('
 
-            Run the work in a sub-agent called `${{ env.SUBAGENT_NAME }}`
-            (or a generic one if that name is empty).
+            Run the work in a sub-agent called `{0}`.', env.SUBAGENT_NAME) || '' }}
 
             1. EXPLORE — invoke the `openspec-explore` skill
                (installed at `.claude/skills/openspec-explore/SKILL.md`).
@@ -693,8 +703,9 @@ jobs:
             The proposal PR for `spec/${{ steps.check.outputs.issue_number }}-${{ steps.check.outputs.change_slug }}`
             has been merged into main, so the change folder
             `openspec/changes/${{ steps.check.outputs.change_slug }}/` is on main.
+            ${{ env.SUBAGENT_NAME && format('
 
-            Run in a sub-agent called `${{ env.SUBAGENT_NAME }}`.
+            Run the work in a sub-agent called `{0}`.', env.SUBAGENT_NAME) || '' }}
 
             1. APPLY — `openspec-apply-change` skill.
             2. VERIFY — `openspec-verify-change` skill (skip if nothing to verify).
@@ -903,8 +914,9 @@ jobs:
             Change folder: `openspec/changes/${{ steps.check.outputs.change_slug }}/`
             (for impl branches, the folder may have been moved under
             `openspec/changes/archive/` already — check both).
+            ${{ env.SUBAGENT_NAME && format('
 
-            Run in a sub-agent called `${{ env.SUBAGENT_NAME }}`.
+            Run the work in a sub-agent called `{0}`.', env.SUBAGENT_NAME) || '' }}
 
             HOW
             1. READ THE CONVERSATION — use `gh` to fetch:
