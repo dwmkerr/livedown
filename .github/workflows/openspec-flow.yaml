@@ -724,17 +724,18 @@ jobs:
             - Conventional commit PR title.
         run: |
           export CLAUDE_ARGS="--permission-mode bypassPermissions"
-          # DEBUG: show_full_output=true temporarily so the agent's tool
-          # calls + reasoning are visible in the run log. Revert after
-          # diagnosing #52 impl silent-no-op. App token is registered via
-          # core.setSecret() so it is still redacted in the visible log.
+          # DEBUG: show_full_output=true via INPUT_SHOW_FULL_OUTPUT env
+          # (action reads process.env.INPUT_SHOW_FULL_OUTPUT at
+          # src/entrypoints/run.ts:274 — ALL_INPUTS JSON is ignored for
+          # this knob). Revert after diagnosing #52 silent no-op.
+          export INPUT_SHOW_FULL_OUTPUT=true
           ALL_INPUTS="$(jq -nc \
             --arg prompt "$PROMPT" \
             --arg api_key "$ANTHROPIC_API_KEY" \
             --arg gh_token "$GITHUB_TOKEN" \
             --arg claude_args "$CLAUDE_ARGS" \
             --arg extra_perms "$AGENT_ADDITIONAL_PERMISSIONS" \
-            '{prompt: $prompt, anthropic_api_key: $api_key, github_token: $gh_token, claude_args: $claude_args, additional_permissions: $extra_perms, show_full_output: "true"}')"
+            '{prompt: $prompt, anthropic_api_key: $api_key, github_token: $gh_token, claude_args: $claude_args, additional_permissions: $extra_perms}')"
           export ALL_INPUTS
           bun run /tmp/claude-code-action/src/entrypoints/run.ts
 
