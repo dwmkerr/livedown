@@ -30,8 +30,11 @@ that job SHALL be skipped.
 - **WHEN** a GitHub issue is assigned to the agent login, or the
   `openspec:start` label is added to an issue with no lifecycle label
 - **THEN** the `plan` job runs: preflight is called first; if `skip=false`,
-  the agent runs; postflight is called after the agent; if postflight
-  fails, the handle-failure step runs
+  the agent runs; a post-agent step scrapes the session log via the
+  `dwmkerr/claude-toolkit` `grepsession.sh` pattern and injects a usage table
+  between `<!-- openspec-flow-usage-table -->` and
+  `<!-- /openspec-flow-usage-table -->` markers into the spec PR body;
+  postflight is called after; if postflight fails, the handle-failure step runs
 
 #### Scenario: Preflight skip aborts agent run cleanly
 - **WHEN** the preflight action sets `skip=true` for any job
@@ -48,8 +51,10 @@ that job SHALL be skipped.
 #### Scenario: Implement job fires on proposal PR merge
 - **WHEN** a PR whose head branch matches `spec/<n>-<slug>` is merged
   into main and the linked issue is in `openspec:spec-ready`
-- **THEN** the `implement` job runs with the same preflight/postflight
-  guards as the plan job
+- **THEN** the `implement` job runs: a post-agent step scrapes the session
+  log and injects a usage table between `<!-- openspec-flow-usage-table -->`
+  and `<!-- /openspec-flow-usage-table -->` markers into the impl PR body;
+  the same preflight/postflight guards apply as the plan job
 
 #### Scenario: Respond job fires on openspec:start label on a PR
 - **WHEN** the `openspec:start` label is added to a PR whose branch
