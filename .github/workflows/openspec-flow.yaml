@@ -411,6 +411,95 @@ jobs:
             - Write nothing outside `openspec/changes/<name>/`.
             - Conventional commit PR title (`chore:` prefix).
 
+      # Post-agent step: scrape the Claude session log via the same technique
+      # as dwmkerr/claude-toolkit (github.com/dwmkerr/claude-toolkit@v0.1.6)
+      # to build a usage table, then inject it into the spec PR body between
+      # <!-- openspec-flow-usage-table --> markers.
+      - name: Inject usage table into spec PR body
+        if: success() && steps.check.outputs.run == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.AGENT_GITHUB_TOKEN || github.token }}
+          REPO: ${{ github.repository }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          # Locate the most-recently-modified Claude session JSONL file.
+          # Claude Code writes sessions to ~/.claude/projects/-<cwd>/
+          # where / and _ in the path are replaced by -.
+          project_key=$(pwd | sed 's|[/_]|-|g' | sed 's|^-||')
+          session_dir="$HOME/.claude/projects/-${project_key}"
+          session_file=""
+          if [[ -d "$session_dir" ]]; then
+            session_file=$(ls -t "$session_dir"/*.jsonl 2>/dev/null | head -1 || true)
+          fi
+
+          # Build the usage table from Skill and Task (sub-agent) invocations.
+          table="| Step | Agent/Skill | Detail |\n|------|-------------|--------|\n"
+          step=0
+          if [[ -n "$session_file" && -f "$session_file" ]]; then
+            while IFS= read -r row; do
+              name=$(echo "$row" | jq -r '.name // empty' 2>/dev/null)
+              [[ -z "$name" ]] && continue
+              case "$name" in
+                Skill)
+                  step=$((step + 1))
+                  skill=$(echo "$row" | jq -r '.input.skill // "(unknown)"' 2>/dev/null)
+                  args=$(echo "$row" | jq -r '.input.args // ""' 2>/dev/null | cut -c1-80)
+                  detail="${args:-invoked}"
+                  table+="| $step | \`$skill\` (skill) | $detail |\n"
+                  ;;
+                Task)
+                  step=$((step + 1))
+                  agent=$(echo "$row" | jq -r '.input.subagent_type // "(subagent)"' 2>/dev/null)
+                  desc=$(echo "$row" | jq -r '.input.description // ""' 2>/dev/null | cut -c1-80)
+                  detail="${desc:-invoked}"
+                  table+="| $step | \`$agent\` (agent) | $detail |\n"
+                  ;;
+              esac
+            done < <(grep -o '"type":"tool_use"[^}]*"name":"[ST][a-z]*"[^}]*}' "$session_file" 2>/dev/null \
+              | while IFS= read -r chunk; do
+                  echo "$chunk" | jq -c '{name: .name, input: .input}' 2>/dev/null || true
+                done)
+          fi
+          if [[ $step -eq 0 ]]; then
+            table+="| — | (no skills or sub-agents recorded) | Session log unavailable or empty |\n"
+          fi
+
+          # Find the open spec PR for this issue.
+          pr=$(gh pr list --repo "$REPO" --state open \
+            --search "head:spec/$ISSUE_NUMBER-" \
+            --json number --jq '.[0].number // empty')
+          [[ -z "$pr" ]] && { echo "No open spec PR found — skipping table injection."; exit 0; }
+
+          # Fetch current PR body.
+          body=$(gh pr view "$pr" --repo "$REPO" --json body --jq '.body')
+
+          # Build the delimited block to inject.
+          block="<!-- openspec-flow-usage-table -->\n${table}<!-- /openspec-flow-usage-table -->"
+
+          # Inject: replace existing block if present, otherwise insert before
+          # the first --- separator.
+          if echo "$body" | grep -q "<!-- openspec-flow-usage-table -->"; then
+            new_body=$(echo "$body" | awk '
+              /<!-- openspec-flow-usage-table -->/{skip=1; next}
+              /<!-- \/openspec-flow-usage-table -->/{skip=0; next}
+              !skip{print}
+            ' | awk -v block="$block" '
+              /^---$/ && !injected {print block; print; injected=1; next}
+              {print}
+              END {if (!injected) print block}
+            ')
+          else
+            new_body=$(echo "$body" | awk -v block="$block" '
+              /^---$/ && !injected {print block; print; injected=1; next}
+              {print}
+              END {if (!injected) print block}
+            ')
+          fi
+
+          printf '%s' "$new_body" > /tmp/pr-body-updated.md
+          gh pr edit "$pr" --repo "$REPO" --body-file /tmp/pr-body-updated.md
+          echo "Usage table injected into spec PR #$pr ($step row(s))."
+
       # Postflight: plan agent must open a spec PR with at least one file
       # change. Empty diffs can happen when the change folder already
       # exists on main and ff-change silently no-ops (see #52 / PR #64).
@@ -713,6 +802,95 @@ jobs:
             CONSTRAINTS
             - Change folder ends under `openspec/changes/archive/<name>/`.
             - Conventional commit PR title.
+
+      # Post-agent step: scrape the Claude session log via the same technique
+      # as dwmkerr/claude-toolkit (github.com/dwmkerr/claude-toolkit@v0.1.6)
+      # to build a usage table, then inject it into the impl PR body between
+      # <!-- openspec-flow-usage-table --> markers.
+      - name: Inject usage table into impl PR body
+        if: success() && steps.verify-issue.outputs.run == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.AGENT_GITHUB_TOKEN || github.token }}
+          REPO: ${{ github.repository }}
+          ISSUE_NUMBER: ${{ steps.check.outputs.issue_number }}
+        run: |
+          # Locate the most-recently-modified Claude session JSONL file.
+          # Claude Code writes sessions to ~/.claude/projects/-<cwd>/
+          # where / and _ in the path are replaced by -.
+          project_key=$(pwd | sed 's|[/_]|-|g' | sed 's|^-||')
+          session_dir="$HOME/.claude/projects/-${project_key}"
+          session_file=""
+          if [[ -d "$session_dir" ]]; then
+            session_file=$(ls -t "$session_dir"/*.jsonl 2>/dev/null | head -1 || true)
+          fi
+
+          # Build the usage table from Skill and Task (sub-agent) invocations.
+          table="| Step | Agent/Skill | Detail |\n|------|-------------|--------|\n"
+          step=0
+          if [[ -n "$session_file" && -f "$session_file" ]]; then
+            while IFS= read -r row; do
+              name=$(echo "$row" | jq -r '.name // empty' 2>/dev/null)
+              [[ -z "$name" ]] && continue
+              case "$name" in
+                Skill)
+                  step=$((step + 1))
+                  skill=$(echo "$row" | jq -r '.input.skill // "(unknown)"' 2>/dev/null)
+                  args=$(echo "$row" | jq -r '.input.args // ""' 2>/dev/null | cut -c1-80)
+                  detail="${args:-invoked}"
+                  table+="| $step | \`$skill\` (skill) | $detail |\n"
+                  ;;
+                Task)
+                  step=$((step + 1))
+                  agent=$(echo "$row" | jq -r '.input.subagent_type // "(subagent)"' 2>/dev/null)
+                  desc=$(echo "$row" | jq -r '.input.description // ""' 2>/dev/null | cut -c1-80)
+                  detail="${desc:-invoked}"
+                  table+="| $step | \`$agent\` (agent) | $detail |\n"
+                  ;;
+              esac
+            done < <(grep -o '"type":"tool_use"[^}]*"name":"[ST][a-z]*"[^}]*}' "$session_file" 2>/dev/null \
+              | while IFS= read -r chunk; do
+                  echo "$chunk" | jq -c '{name: .name, input: .input}' 2>/dev/null || true
+                done)
+          fi
+          if [[ $step -eq 0 ]]; then
+            table+="| — | (no skills or sub-agents recorded) | Session log unavailable or empty |\n"
+          fi
+
+          # Find the open impl PR for this issue.
+          pr=$(gh pr list --repo "$REPO" --state open \
+            --search "head:impl/$ISSUE_NUMBER-" \
+            --json number --jq '.[0].number // empty')
+          [[ -z "$pr" ]] && { echo "No open impl PR found — skipping table injection."; exit 0; }
+
+          # Fetch current PR body.
+          body=$(gh pr view "$pr" --repo "$REPO" --json body --jq '.body')
+
+          # Build the delimited block to inject.
+          block="<!-- openspec-flow-usage-table -->\n${table}<!-- /openspec-flow-usage-table -->"
+
+          # Inject: replace existing block if present, otherwise insert before
+          # the first --- separator.
+          if echo "$body" | grep -q "<!-- openspec-flow-usage-table -->"; then
+            new_body=$(echo "$body" | awk '
+              /<!-- openspec-flow-usage-table -->/{skip=1; next}
+              /<!-- \/openspec-flow-usage-table -->/{skip=0; next}
+              !skip{print}
+            ' | awk -v block="$block" '
+              /^---$/ && !injected {print block; print; injected=1; next}
+              {print}
+              END {if (!injected) print block}
+            ')
+          else
+            new_body=$(echo "$body" | awk -v block="$block" '
+              /^---$/ && !injected {print block; print; injected=1; next}
+              {print}
+              END {if (!injected) print block}
+            ')
+          fi
+
+          printf '%s' "$new_body" > /tmp/pr-body-updated.md
+          gh pr edit "$pr" --repo "$REPO" --body-file /tmp/pr-body-updated.md
+          echo "Usage table injected into impl PR #$pr ($step row(s))."
 
       # Postflight: agent often reports success but produces no impl PR
       # (silent no-op — #48). Assert the expected artifact exists;
