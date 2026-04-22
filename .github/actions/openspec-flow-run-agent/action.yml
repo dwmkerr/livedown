@@ -19,7 +19,8 @@ inputs:
   github_token:
     description: >
       GitHub token the agent uses for API calls and git push. Typically
-      ${{ secrets.AGENT_GITHUB_TOKEN || github.token }}.
+      secrets.AGENT_GITHUB_TOKEN with a fallback to github.token — see
+      caller workflow.
     required: true
   override_github_token:
     description: >
