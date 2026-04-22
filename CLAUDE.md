@@ -73,39 +73,25 @@ Run the security agent (`.claude/agents/security.md`) before merging security-se
 - CLI changes should include terminal screenshots for non-trivial changes
 - Never add breadcrumb comments — only explain *why*, not *what*
 
+## GitHub workflows and actions
+
+Rules for any change under `.github/workflows/` or `.github/actions/`. These are mandatory, not advisory.
+
+1. **Duplicative content is a bug.** Any bash, env block, or `gh` sequence that would appear in two or more workflows or jobs MUST be extracted into a composite action under `.github/actions/<verb>/action.yml` and called via `uses:`. Extract **before** the second copy is written. If you catch yourself about to paste a block across jobs, stop and extract first. Inline duplication is never acceptable.
+
+2. **Prefer composite actions over shell scripts under `.github/workflows/scripts/`.** Composite actions are the GitHub-native unit of reuse; they declare typed inputs and don't depend on the repo being checked out at the script's path.
+
+3. **Name env vars the way the consumer reads them.** If a downstream action reads `process.env.FOO`, export it as `FOO` — not `AGENT_FOO`, not `INPUT_FOO`. Verify by reading the action's source; do not infer from input names in `action.yml`.
+
 ## OpenSpec Flow
 
-Rules that apply when implementing against `.github/workflows/openspec-flow.yaml` or any of the `.github/actions/openspec-flow-*/` composite actions. Extracted later into a dedicated doc/skill.
+Rules that apply when you are the agent running from `.github/workflows/openspec-flow.yaml` (plan, implement, respond, cleanup). Mandatory.
 
-### Dedupe with composite actions, never inline twice
+1. **Session log path in CI is `/home/runner/work/_temp/claude-execution-output.json`.** Parse with `jq`. Do not use `~/.claude/projects/-<cwd>/*.jsonl` — developer-local only, empty in CI.
 
-If a block of workflow logic (env setup, bash script, `gh` sequence) would be the same across two or more of the `plan`, `implement`, `respond`, or `cleanup` jobs, extract it into a composite action under `.github/actions/openspec-flow-<verb>/action.yml` and reference it via `uses: ./.github/actions/openspec-flow-<verb>` in each caller. Do **not** inline duplicate copies across jobs. Pattern already established by `openspec-flow-prune-comments`, `openspec-flow-raise-comment`, `openspec-flow-flip-label`, `openspec-flow-handle-failure`, `openspec-flow-run-agent`.
+2. **Archive must sync delta specs.** When archiving a change that adds a `specs/<cap>/spec.md`, also create or update `openspec/specs/<cap>/spec.md` in the same impl PR.
 
-Rationale: env-var name drift (e.g. `AGENT_ADDITIONAL_PERMISSIONS` vs `ADDITIONAL_PERMISSIONS`) has silently broken flow behaviour multiple times. Single source of truth avoids this.
-
-### Claude session log location in CI
-
-The Claude Code GitHub Action writes its session to `/home/runner/work/_temp/claude-execution-output.json` — a single JSON blob, not line-delimited.
-
-Do **not** assume the interactive path pattern used by `dwmkerr/claude-toolkit`'s `grepsession.sh` (`$HOME/.claude/projects/-<cwd-mangled>/*.jsonl`). That path exists only on a developer's local machine running an interactive Claude Code session; it will be empty in CI.
-
-If you need to extract sub-agent or skill usage from a CI run, parse `/home/runner/work/_temp/claude-execution-output.json` directly with `jq`. Example filter for `tool_use` entries:
-
-```
-jq -r '
-  .. | objects | select(.type? == "tool_use")
-  | select(.name == "Skill" or .name == "Task")
-  | {name: .name, input: .input}
-'
-```
-
-### Archive must sync delta specs to main
-
-When `openspec-archive-change` runs for a change that adds a new capability (a `specs/<capability>/spec.md` under the change folder), the main spec at `openspec/specs/<capability>/spec.md` MUST be created or updated in the same impl PR. Silent-skipping the sync has been observed; if the skill does not emit the main-spec update, do it explicitly before opening the impl PR.
-
-### External-repo references must be grounded
-
-If the spec references any external repo, skill, plugin, or action (`dwmkerr/...`, `anthropics/...`, etc.), clone it to `/tmp` during EXPLORE and read the actual entry points. Do not assume interfaces based on name. If the repo's exposed surface does not match the spec's assumption (e.g. "it's a CLI" vs "it's a Claude Code plugin"), that is an Open Question / blocker, not something to hand-wave past.
+3. **External repo references must be grounded.** Clone any referenced repo (`dwmkerr/...`, `anthropics/...`, etc.) to `/tmp` during EXPLORE. Read actual entry points before speccing or implementing against them. Do not assume interfaces from names.
 
 ## Deployment
 
