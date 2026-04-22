@@ -1,0 +1,79 @@
+name: openspec-flow-run-agent
+description: |
+  Thin wrapper around `anthropics/claude-code-action`'s entrypoint,
+  factored out of the plan/implement/respond jobs to stop triplicating
+  the ALL_INPUTS jq construction and env wiring.
+
+  The caller is responsible for:
+    - `actions/checkout` of the target repo
+    - cloning claude-code-action to `claude_code_action_path`
+    - installing bun on PATH
+
+inputs:
+  prompt:
+    description: Full agent prompt text.
+    required: true
+  anthropic_api_key:
+    description: Anthropic API key (from secrets.ANTHROPIC_API_KEY).
+    required: true
+  github_token:
+    description: >
+      GitHub token the agent uses for API calls and git push. Typically
+      secrets.AGENT_GITHUB_TOKEN with a fallback to github.token — see
+      caller workflow.
+    required: true
+  override_github_token:
+    description: >
+      Optional PAT that overrides the OIDC-derived app token. Passed
+      through as OVERRIDE_GITHUB_TOKEN env var.
+    required: false
+    default: ""
+  additional_permissions:
+    description: >
+      Extra scopes to request on the OIDC-exchanged installation token.
+      Must match the env var name the action reads
+      (process.env.ADDITIONAL_PERMISSIONS in src/github/token.ts).
+      Example: `workflows: write` to let the agent push
+      .github/workflows/*.yaml edits.
+    required: false
+    default: ""
+  show_full_output:
+    description: >
+      If "true", agent tool-call output is visible in the run log.
+      Useful for debugging silent no-ops. Leak risk on public repos —
+      leave off unless investigating.
+    required: false
+    default: "false"
+  claude_code_action_path:
+    description: >
+      Filesystem path where the caller has cloned claude-code-action.
+    required: false
+    default: "/tmp/claude-code-action"
+
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        PROMPT: ${{ inputs.prompt }}
+        ANTHROPIC_API_KEY: ${{ inputs.anthropic_api_key }}
+        GITHUB_TOKEN: ${{ inputs.github_token }}
+        OVERRIDE_GITHUB_TOKEN: ${{ inputs.override_github_token }}
+        ADDITIONAL_PERMISSIONS: ${{ inputs.additional_permissions }}
+        INPUT_SHOW_FULL_OUTPUT: ${{ inputs.show_full_output }}
+        ACTION_PATH: ${{ inputs.claude_code_action_path }}
+      run: |
+        # Override GITHUB_ACTION_PATH — GH sets it to *this* composite
+        # action's dir by default; claude-code-action's entrypoint needs
+        # its own source tree instead.
+        export GITHUB_ACTION_PATH="$ACTION_PATH"
+        export CLAUDE_ARGS="--permission-mode bypassPermissions"
+        ALL_INPUTS="$(jq -nc \
+          --arg prompt "$PROMPT" \
+          --arg api_key "$ANTHROPIC_API_KEY" \
+          --arg gh_token "$GITHUB_TOKEN" \
+          --arg claude_args "$CLAUDE_ARGS" \
+          --arg extra_perms "$ADDITIONAL_PERMISSIONS" \
+          '{prompt: $prompt, anthropic_api_key: $api_key, github_token: $gh_token, claude_args: $claude_args, additional_permissions: $extra_perms}')"
+        export ALL_INPUTS
+        bun run "$GITHUB_ACTION_PATH/src/entrypoints/run.ts"

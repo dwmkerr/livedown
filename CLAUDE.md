@@ -73,6 +73,26 @@ Run the security agent (`.claude/agents/security.md`) before merging security-se
 - CLI changes should include terminal screenshots for non-trivial changes
 - Never add breadcrumb comments — only explain *why*, not *what*
 
+## GitHub workflows and actions
+
+Rules for any change under `.github/workflows/` or `.github/actions/`. These are mandatory, not advisory.
+
+1. **Duplicative content is a bug.** Any bash, env block, or `gh` sequence that would appear in two or more workflows or jobs MUST be extracted into a composite action under `.github/actions/<verb>/action.yml` and called via `uses:`. Extract **before** the second copy is written. If you catch yourself about to paste a block across jobs, stop and extract first. Inline duplication is never acceptable.
+
+2. **Prefer composite actions over shell scripts under `.github/workflows/scripts/`.** Composite actions are the GitHub-native unit of reuse; they declare typed inputs and don't depend on the repo being checked out at the script's path.
+
+3. **Name env vars the way the consumer reads them.** If a downstream action reads `process.env.FOO`, export it as `FOO` — not `AGENT_FOO`, not `INPUT_FOO`. Verify by reading the action's source; do not infer from input names in `action.yml`.
+
+## OpenSpec Flow
+
+Rules that apply when you are the agent running from `.github/workflows/openspec-flow.yaml` (plan, implement, respond, cleanup). Mandatory.
+
+1. **Session log path in CI is `/home/runner/work/_temp/claude-execution-output.json`.** Parse with `jq`. Do not use `~/.claude/projects/-<cwd>/*.jsonl` — developer-local only, empty in CI.
+
+2. **Archive must sync delta specs.** When archiving a change that adds a `specs/<cap>/spec.md`, also create or update `openspec/specs/<cap>/spec.md` in the same impl PR.
+
+3. **External repo references must be grounded.** Clone any referenced repo (`dwmkerr/...`, `anthropics/...`, etc.) to `/tmp` during EXPLORE. Read actual entry points before speccing or implementing against them. Do not assume interfaces from names.
+
 ## Deployment
 
 Two workflows, one responsibility each. **Internal vs external** is the split:

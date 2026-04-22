@@ -81,7 +81,17 @@ on:
 
 env:
   AGENT_ASSIGNEE: "dwmkerr-agent"
-  SUBAGENT_NAME: "openspec-flow-agent"
+  # Name of a sub-agent that the flow prompts tell Claude to delegate to.
+  # Sourced from the repo/org variable `OPENSPEC_FLOW_SUBAGENT_NAME` so
+  # each project decides in its own Settings → Actions → Variables.
+  # Unset / empty ⇒ no sub-agent delegation instruction is included in
+  # the prompts; Claude does the work directly (with access to project
+  # CLAUDE.md). When set, the operator is responsible for creating
+  # `.claude/agents/<name>.md` with the rules that sub-agent should
+  # follow — project-specific sub-agent configuration is not auto-
+  # inherited from CLAUDE.md because Task-spawned sub-agents get a
+  # fresh context.
+  SUBAGENT_NAME: ${{ vars.OPENSPEC_FLOW_SUBAGENT_NAME }}
   CLAUDE_CODE_ACTION_REF: "v1.0.79"
   OPENSPEC_CLI_VERSION: "latest"
   LABEL_START: "openspec:start"
@@ -340,18 +350,19 @@ jobs:
 
       - name: Run plan agent
         if: steps.check.outputs.run == 'true'
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          GITHUB_TOKEN: ${{ secrets.AGENT_GITHUB_TOKEN || github.token }}
-          OVERRIDE_GITHUB_TOKEN: ${{ secrets.AGENT_GITHUB_TOKEN }}
-          GITHUB_ACTION_PATH: /tmp/claude-code-action
-          PROMPT: |
+        uses: ./.github/actions/openspec-flow-run-agent
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ secrets.AGENT_GITHUB_TOKEN || github.token }}
+          override_github_token: ${{ secrets.AGENT_GITHUB_TOKEN }}
+          additional_permissions: ${{ env.AGENT_ADDITIONAL_PERMISSIONS }}
+          prompt: |
             Drive issue #${{ github.event.issue.number }} in
             ${{ github.repository }} to a draft OpenSpec proposal PR.
             Issue title: "${{ github.event.issue.title }}"
+            ${{ env.SUBAGENT_NAME && format('
 
-            Run the work in a sub-agent called `${{ env.SUBAGENT_NAME }}`
-            (or a generic one if that name is empty).
+            Run the work in a sub-agent called `{0}`.', env.SUBAGENT_NAME) || '' }}
 
             1. EXPLORE — invoke the `openspec-explore` skill
                (installed at `.claude/skills/openspec-explore/SKILL.md`).
@@ -409,17 +420,6 @@ jobs:
             CONSTRAINTS
             - Write nothing outside `openspec/changes/<name>/`.
             - Conventional commit PR title (`chore:` prefix).
-        run: |
-          export CLAUDE_ARGS="--permission-mode bypassPermissions"
-          ALL_INPUTS="$(jq -nc \
-            --arg prompt "$PROMPT" \
-            --arg api_key "$ANTHROPIC_API_KEY" \
-            --arg gh_token "$GITHUB_TOKEN" \
-            --arg claude_args "$CLAUDE_ARGS" \
-            --arg extra_perms "$AGENT_ADDITIONAL_PERMISSIONS" \
-            '{prompt: $prompt, anthropic_api_key: $api_key, github_token: $gh_token, claude_args: $claude_args, additional_permissions: $extra_perms}')"
-          export ALL_INPUTS
-          bun run /tmp/claude-code-action/src/entrypoints/run.ts
 
       # Postflight: plan agent must open a spec PR with at least one file
       # change. Empty diffs can happen when the change folder already
@@ -691,19 +691,21 @@ jobs:
 
       - name: Run implement agent
         if: steps.verify-issue.outputs.run == 'true'
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          GITHUB_TOKEN: ${{ secrets.AGENT_GITHUB_TOKEN || github.token }}
-          OVERRIDE_GITHUB_TOKEN: ${{ secrets.AGENT_GITHUB_TOKEN }}
-          GITHUB_ACTION_PATH: /tmp/claude-code-action
-          PROMPT: |
+        uses: ./.github/actions/openspec-flow-run-agent
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ secrets.AGENT_GITHUB_TOKEN || github.token }}
+          override_github_token: ${{ secrets.AGENT_GITHUB_TOKEN }}
+          additional_permissions: ${{ env.AGENT_ADDITIONAL_PERMISSIONS }}
+          prompt: |
             Drive issue #${{ steps.check.outputs.issue_number }} in
             ${{ github.repository }} through the OpenSpec implement stage.
             The proposal PR for `spec/${{ steps.check.outputs.issue_number }}-${{ steps.check.outputs.change_slug }}`
             has been merged into main, so the change folder
             `openspec/changes/${{ steps.check.outputs.change_slug }}/` is on main.
+            ${{ env.SUBAGENT_NAME && format('
 
-            Run in a sub-agent called `${{ env.SUBAGENT_NAME }}`.
+            Run the work in a sub-agent called `{0}`.', env.SUBAGENT_NAME) || '' }}
 
             1. APPLY — `openspec-apply-change` skill.
             2. VERIFY — `openspec-verify-change` skill (skip if nothing to verify).
@@ -722,17 +724,6 @@ jobs:
             CONSTRAINTS
             - Change folder ends under `openspec/changes/archive/<name>/`.
             - Conventional commit PR title.
-        run: |
-          export CLAUDE_ARGS="--permission-mode bypassPermissions"
-          ALL_INPUTS="$(jq -nc \
-            --arg prompt "$PROMPT" \
-            --arg api_key "$ANTHROPIC_API_KEY" \
-            --arg gh_token "$GITHUB_TOKEN" \
-            --arg claude_args "$CLAUDE_ARGS" \
-            --arg extra_perms "$AGENT_ADDITIONAL_PERMISSIONS" \
-            '{prompt: $prompt, anthropic_api_key: $api_key, github_token: $gh_token, claude_args: $claude_args, additional_permissions: $extra_perms}')"
-          export ALL_INPUTS
-          bun run /tmp/claude-code-action/src/entrypoints/run.ts
 
       # Postflight: agent often reports success but produces no impl PR
       # (silent no-op — #48). Assert the expected artifact exists;
@@ -907,15 +898,13 @@ jobs:
 
       - name: Run respond agent
         if: steps.check.outputs.run == 'true'
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          GITHUB_TOKEN: ${{ secrets.AGENT_GITHUB_TOKEN || github.token }}
-          OVERRIDE_GITHUB_TOKEN: ${{ secrets.AGENT_GITHUB_TOKEN }}
-          GITHUB_ACTION_PATH: /tmp/claude-code-action
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          BRANCH_KIND: ${{ steps.check.outputs.branch_kind }}
-          CHANGE_SLUG: ${{ steps.check.outputs.change_slug }}
-          PROMPT: |
+        uses: ./.github/actions/openspec-flow-run-agent
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ secrets.AGENT_GITHUB_TOKEN || github.token }}
+          override_github_token: ${{ secrets.AGENT_GITHUB_TOKEN }}
+          additional_permissions: ${{ env.AGENT_ADDITIONAL_PERMISSIONS }}
+          prompt: |
             Refine PR #${{ github.event.pull_request.number }} in
             ${{ github.repository }} based on the conversation so far.
 
@@ -925,8 +914,9 @@ jobs:
             Change folder: `openspec/changes/${{ steps.check.outputs.change_slug }}/`
             (for impl branches, the folder may have been moved under
             `openspec/changes/archive/` already — check both).
+            ${{ env.SUBAGENT_NAME && format('
 
-            Run in a sub-agent called `${{ env.SUBAGENT_NAME }}`.
+            Run the work in a sub-agent called `{0}`.', env.SUBAGENT_NAME) || '' }}
 
             HOW
             1. READ THE CONVERSATION — use `gh` to fetch:
@@ -961,17 +951,6 @@ jobs:
               implementation paths for impl PRs. Do not invent new scope.
             - If a reviewer's ask conflicts with the spec, flag the conflict
               in the summary comment rather than silently resolving it.
-        run: |
-          export CLAUDE_ARGS="--permission-mode bypassPermissions"
-          ALL_INPUTS="$(jq -nc \
-            --arg prompt "$PROMPT" \
-            --arg api_key "$ANTHROPIC_API_KEY" \
-            --arg gh_token "$GITHUB_TOKEN" \
-            --arg claude_args "$CLAUDE_ARGS" \
-            --arg extra_perms "$AGENT_ADDITIONAL_PERMISSIONS" \
-            '{prompt: $prompt, anthropic_api_key: $api_key, github_token: $gh_token, claude_args: $claude_args, additional_permissions: $extra_perms}')"
-          export ALL_INPUTS
-          bun run /tmp/claude-code-action/src/entrypoints/run.ts
 
       - name: Remove openspec:start label
         if: always() && steps.check.outputs.run == 'true'
