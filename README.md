@@ -20,21 +20,23 @@
 
 ## Quickstart
 
+Run `livedown share`:
+
+```bash
+npx @dwmkerr/livedown share ./docs/architecture.md
+```
+
+The CLI syncs the file to an ephemeral relay and provides a URL for others to view. An edit key can be shared to allow others to edit the file - changes will be synched to the local filesystem by the CLI.
+
 <p align="center">
   <img src="docs/terminal-share.svg" alt="livedown share terminal output" width="720">
 </p>
 
-```bash
-npx @dwmkerr/livedown share ./your-file.md
-```
+The ephemeral relay will look similar to the below, and disappear when the CLI is terminated:
 
-- Press **`o`** to open the printed URL in your browser, or copy it and send it to anyone you want to view the file.
-- Press **`c`** to copy the edit key and send it — privately — to anyone you want to let edit.
-- Press **`q`** to stop sharing.
-
-The URL alone grants view access. Only people who also hold the edit key can change the file.
-
-<!-- TODO: screenshot of the livedown browser viewer -->
+<p align="center">
+  <img src="docs/livedown-share-architecture-doc-browser-screenshot.png" alt="livedown browser viewer showing the architecture doc" width="900">
+</p>
 
 ## Commands
 
@@ -54,12 +56,18 @@ Options:
 ## Developer Guide
 
 ```bash
+# Clone the repo.
 git clone git@github.com:dwmkerr/livedown.git
 cd livedown
+
+# Install dependencies, build and link.
 npm install
 npm run build
 npm link
+
+# Share a file, or use dev mode:
 livedown share ./README.md
+npm start -- share ./README.md
 ```
 
 ### Run the full stack locally
@@ -75,7 +83,7 @@ PartyKit serves the relay *and* `public/` on `http://localhost:1999` with cachin
 In another terminal, share a file against the local relay:
 
 ```bash
-PARTYKIT_HOST=localhost:1999 npx ts-node src/cli.ts share ./tests/documents/empty.md
+PARTYKIT_HOST=localhost:1999 npm start share ./README.md
 ```
 
 The CLI prints a `http://localhost:1999/#…` URL. Open it and iterate.
