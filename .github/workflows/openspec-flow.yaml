@@ -426,6 +426,94 @@ jobs:
           export ALL_INPUTS
           bun run /tmp/claude-code-action/src/entrypoints/run.ts
 
+      # Scrape the Claude session execution file (written by claude-code-action
+      # to $RUNNER_TEMP/claude-execution-output.json) and inject a usage table
+      # into the spec PR body between the HTML comment markers.
+      # Uses dwmkerr/claude-toolkit@v0.1.6 grepsession pattern but against the
+      # CI execution file rather than the local ~/.claude/projects/ path.
+      - name: Inject usage table into spec PR body
+        if: success() && steps.check.outputs.run == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.AGENT_GITHUB_TOKEN || github.token }}
+          REPO: ${{ github.repository }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          EXECUTION_FILE: ${{ runner.temp }}/claude-execution-output.json
+        run: |
+          # Find the spec PR opened by the agent.
+          pr=$(gh pr list --repo "$REPO" --state open \
+            --search "head:spec/$ISSUE_NUMBER-" \
+            --json number --jq '.[0].number // empty')
+          [ -z "$pr" ] && { echo "No spec PR found — skipping usage table"; exit 0; }
+
+          # Parse the execution file for Skill and Task tool invocations.
+          # The execution file is a JSON array of SDKMessage objects produced by
+          # claude-code-action (dwmkerr/claude-toolkit v0.1.6 grepsession pattern).
+          if [ ! -f "$EXECUTION_FILE" ]; then
+            echo "Execution file not found at $EXECUTION_FILE — skipping usage table"
+            exit 0
+          fi
+
+          # Extract rows: step counter, agent/skill name, detail.
+          table=$(jq -r '
+            [ .[]
+              | select(.type == "assistant")
+              | .message.content[]?
+              | select(.type == "tool_use")
+              | select(.name == "Skill" or .name == "Task")
+              | {
+                  kind: .name,
+                  name: (
+                    if .name == "Skill" then (.input.skill // .input.name // "unknown")
+                    elif .name == "Task" then (.input.subagent_type // .input.description // "unknown")
+                    else "unknown"
+                    end
+                  ),
+                  detail: (
+                    if .name == "Skill" then (.input.args // "" | if type == "string" then . else (. | tostring) end | .[0:120])
+                    elif .name == "Task" then (.input.description // "" | .[0:120])
+                    else ""
+                    end
+                  )
+                }
+            ]
+            | to_entries
+            | map("| \(.key + 1) | \(.value.kind): `\(.value.name)` | \(.value.detail) |")
+            | if length == 0 then ["| — | — | No sub-agents or skills recorded |"]
+              else . end
+            | ["| Step | Agent/Skill | Detail |", "| --- | --- | --- |"] + .
+            | join("\n")
+          ' "$EXECUTION_FILE")
+
+          # Read the current PR body.
+          current_body=$(gh pr view "$pr" --repo "$REPO" --json body --jq '.body')
+
+          open_marker="<!-- openspec-flow-usage-table -->"
+          close_marker="<!-- /openspec-flow-usage-table -->"
+
+          # If markers already present, replace between them; else append before `---`.
+          if echo "$current_body" | grep -qF "$open_marker"; then
+            new_body=$(echo "$current_body" | awk \
+              -v open="$open_marker" \
+              -v close="$close_marker" \
+              -v tbl="$table" \
+              'p && /'"$close_marker"'/{print close; p=0; next}
+               p{next}
+               /'"$open_marker"'/{print open; printf "%s\n", tbl; p=1; next}
+               {print}')
+          else
+            # Append usage table block before the first `---` separator line.
+            new_body=$(echo "$current_body" | awk \
+              -v open="$open_marker" \
+              -v close="$close_marker" \
+              -v tbl="$table" \
+              'injected==0 && /^---$/{print open; printf "%s\n", tbl; print close; print; injected=1; next}
+               {print}')
+          fi
+
+          printf '%s' "$new_body" > /tmp/pr-body.md
+          gh pr edit "$pr" --repo "$REPO" --body-file /tmp/pr-body.md
+          echo "Usage table injected into spec PR #$pr"
+
       # Postflight: plan agent must open a spec PR with at least one file
       # change. Empty diffs can happen when the change folder already
       # exists on main and ff-change silently no-ops (see #52 / PR #64).
@@ -748,6 +836,90 @@ jobs:
             '{prompt: $prompt, anthropic_api_key: $api_key, github_token: $gh_token, claude_args: $claude_args, additional_permissions: $extra_perms}')"
           export ALL_INPUTS
           bun run /tmp/claude-code-action/src/entrypoints/run.ts
+
+      # Scrape the Claude session execution file and inject a usage table
+      # into the impl PR body between the HTML comment markers.
+      # Uses dwmkerr/claude-toolkit@v0.1.6 grepsession pattern against the
+      # CI execution file at $RUNNER_TEMP/claude-execution-output.json.
+      - name: Inject usage table into impl PR body
+        if: success() && steps.verify-issue.outputs.run == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.AGENT_GITHUB_TOKEN || github.token }}
+          REPO: ${{ github.repository }}
+          ISSUE_NUMBER: ${{ steps.check.outputs.issue_number }}
+          EXECUTION_FILE: ${{ runner.temp }}/claude-execution-output.json
+        run: |
+          # Find the impl PR opened by the agent.
+          pr=$(gh pr list --repo "$REPO" --state open \
+            --search "head:impl/$ISSUE_NUMBER-" \
+            --json number --jq '.[0].number // empty')
+          [ -z "$pr" ] && { echo "No impl PR found — skipping usage table"; exit 0; }
+
+          if [ ! -f "$EXECUTION_FILE" ]; then
+            echo "Execution file not found at $EXECUTION_FILE — skipping usage table"
+            exit 0
+          fi
+
+          # Extract rows: step counter, agent/skill name, detail.
+          table=$(jq -r '
+            [ .[]
+              | select(.type == "assistant")
+              | .message.content[]?
+              | select(.type == "tool_use")
+              | select(.name == "Skill" or .name == "Task")
+              | {
+                  kind: .name,
+                  name: (
+                    if .name == "Skill" then (.input.skill // .input.name // "unknown")
+                    elif .name == "Task" then (.input.subagent_type // .input.description // "unknown")
+                    else "unknown"
+                    end
+                  ),
+                  detail: (
+                    if .name == "Skill" then (.input.args // "" | if type == "string" then . else (. | tostring) end | .[0:120])
+                    elif .name == "Task" then (.input.description // "" | .[0:120])
+                    else ""
+                    end
+                  )
+                }
+            ]
+            | to_entries
+            | map("| \(.key + 1) | \(.value.kind): `\(.value.name)` | \(.value.detail) |")
+            | if length == 0 then ["| — | — | No sub-agents or skills recorded |"]
+              else . end
+            | ["| Step | Agent/Skill | Detail |", "| --- | --- | --- |"] + .
+            | join("\n")
+          ' "$EXECUTION_FILE")
+
+          # Read the current PR body.
+          current_body=$(gh pr view "$pr" --repo "$REPO" --json body --jq '.body')
+
+          open_marker="<!-- openspec-flow-usage-table -->"
+          close_marker="<!-- /openspec-flow-usage-table -->"
+
+          # If markers already present, replace between them; else append before `---`.
+          if echo "$current_body" | grep -qF "$open_marker"; then
+            new_body=$(echo "$current_body" | awk \
+              -v open="$open_marker" \
+              -v close="$close_marker" \
+              -v tbl="$table" \
+              'p && /'"$close_marker"'/{print close; p=0; next}
+               p{next}
+               /'"$open_marker"'/{print open; printf "%s\n", tbl; p=1; next}
+               {print}')
+          else
+            # Append usage table block before the first `---` separator line.
+            new_body=$(echo "$current_body" | awk \
+              -v open="$open_marker" \
+              -v close="$close_marker" \
+              -v tbl="$table" \
+              'injected==0 && /^---$/{print open; printf "%s\n", tbl; print close; print; injected=1; next}
+               {print}')
+          fi
+
+          printf '%s' "$new_body" > /tmp/pr-body.md
+          gh pr edit "$pr" --repo "$REPO" --body-file /tmp/pr-body.md
+          echo "Usage table injected into impl PR #$pr"
 
       # Postflight: agent often reports success but produces no impl PR
       # (silent no-op — #48). Assert the expected artifact exists;
