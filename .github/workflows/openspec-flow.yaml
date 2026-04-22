@@ -340,12 +340,13 @@ jobs:
 
       - name: Run plan agent
         if: steps.check.outputs.run == 'true'
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          GITHUB_TOKEN: ${{ secrets.AGENT_GITHUB_TOKEN || github.token }}
-          OVERRIDE_GITHUB_TOKEN: ${{ secrets.AGENT_GITHUB_TOKEN }}
-          GITHUB_ACTION_PATH: /tmp/claude-code-action
-          PROMPT: |
+        uses: ./.github/actions/openspec-flow-run-agent
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ secrets.AGENT_GITHUB_TOKEN || github.token }}
+          override_github_token: ${{ secrets.AGENT_GITHUB_TOKEN }}
+          additional_permissions: ${{ env.AGENT_ADDITIONAL_PERMISSIONS }}
+          prompt: |
             Drive issue #${{ github.event.issue.number }} in
             ${{ github.repository }} to a draft OpenSpec proposal PR.
             Issue title: "${{ github.event.issue.title }}"
@@ -409,22 +410,6 @@ jobs:
             CONSTRAINTS
             - Write nothing outside `openspec/changes/<name>/`.
             - Conventional commit PR title (`chore:` prefix).
-        run: |
-          export CLAUDE_ARGS="--permission-mode bypassPermissions"
-          # Action reads process.env.ADDITIONAL_PERMISSIONS at
-          # src/github/token.ts:35 when requesting the OIDC-exchanged
-          # installation token. Passing it via ALL_INPUTS JSON is NOT
-          # sufficient — must be an exported env var with this exact name.
-          export ADDITIONAL_PERMISSIONS="$AGENT_ADDITIONAL_PERMISSIONS"
-          ALL_INPUTS="$(jq -nc \
-            --arg prompt "$PROMPT" \
-            --arg api_key "$ANTHROPIC_API_KEY" \
-            --arg gh_token "$GITHUB_TOKEN" \
-            --arg claude_args "$CLAUDE_ARGS" \
-            --arg extra_perms "$AGENT_ADDITIONAL_PERMISSIONS" \
-            '{prompt: $prompt, anthropic_api_key: $api_key, github_token: $gh_token, claude_args: $claude_args, additional_permissions: $extra_perms}')"
-          export ALL_INPUTS
-          bun run /tmp/claude-code-action/src/entrypoints/run.ts
 
       # Postflight: plan agent must open a spec PR with at least one file
       # change. Empty diffs can happen when the change folder already
@@ -696,12 +681,13 @@ jobs:
 
       - name: Run implement agent
         if: steps.verify-issue.outputs.run == 'true'
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          GITHUB_TOKEN: ${{ secrets.AGENT_GITHUB_TOKEN || github.token }}
-          OVERRIDE_GITHUB_TOKEN: ${{ secrets.AGENT_GITHUB_TOKEN }}
-          GITHUB_ACTION_PATH: /tmp/claude-code-action
-          PROMPT: |
+        uses: ./.github/actions/openspec-flow-run-agent
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ secrets.AGENT_GITHUB_TOKEN || github.token }}
+          override_github_token: ${{ secrets.AGENT_GITHUB_TOKEN }}
+          additional_permissions: ${{ env.AGENT_ADDITIONAL_PERMISSIONS }}
+          prompt: |
             Drive issue #${{ steps.check.outputs.issue_number }} in
             ${{ github.repository }} through the OpenSpec implement stage.
             The proposal PR for `spec/${{ steps.check.outputs.issue_number }}-${{ steps.check.outputs.change_slug }}`
@@ -727,27 +713,6 @@ jobs:
             CONSTRAINTS
             - Change folder ends under `openspec/changes/archive/<name>/`.
             - Conventional commit PR title.
-        run: |
-          export CLAUDE_ARGS="--permission-mode bypassPermissions"
-          # Action reads process.env.ADDITIONAL_PERMISSIONS at
-          # src/github/token.ts:35 when requesting the OIDC-exchanged
-          # installation token. Passing it via ALL_INPUTS JSON is NOT
-          # sufficient — must be an exported env var with this exact name.
-          export ADDITIONAL_PERMISSIONS="$AGENT_ADDITIONAL_PERMISSIONS"
-          # DEBUG: show_full_output=true via INPUT_SHOW_FULL_OUTPUT env
-          # (action reads process.env.INPUT_SHOW_FULL_OUTPUT at
-          # src/entrypoints/run.ts:274 — ALL_INPUTS JSON is ignored for
-          # this knob). Revert after diagnosing #52 silent no-op.
-          export INPUT_SHOW_FULL_OUTPUT=true
-          ALL_INPUTS="$(jq -nc \
-            --arg prompt "$PROMPT" \
-            --arg api_key "$ANTHROPIC_API_KEY" \
-            --arg gh_token "$GITHUB_TOKEN" \
-            --arg claude_args "$CLAUDE_ARGS" \
-            --arg extra_perms "$AGENT_ADDITIONAL_PERMISSIONS" \
-            '{prompt: $prompt, anthropic_api_key: $api_key, github_token: $gh_token, claude_args: $claude_args, additional_permissions: $extra_perms}')"
-          export ALL_INPUTS
-          bun run /tmp/claude-code-action/src/entrypoints/run.ts
 
       # Postflight: agent often reports success but produces no impl PR
       # (silent no-op — #48). Assert the expected artifact exists;
@@ -922,15 +887,13 @@ jobs:
 
       - name: Run respond agent
         if: steps.check.outputs.run == 'true'
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          GITHUB_TOKEN: ${{ secrets.AGENT_GITHUB_TOKEN || github.token }}
-          OVERRIDE_GITHUB_TOKEN: ${{ secrets.AGENT_GITHUB_TOKEN }}
-          GITHUB_ACTION_PATH: /tmp/claude-code-action
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          BRANCH_KIND: ${{ steps.check.outputs.branch_kind }}
-          CHANGE_SLUG: ${{ steps.check.outputs.change_slug }}
-          PROMPT: |
+        uses: ./.github/actions/openspec-flow-run-agent
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ secrets.AGENT_GITHUB_TOKEN || github.token }}
+          override_github_token: ${{ secrets.AGENT_GITHUB_TOKEN }}
+          additional_permissions: ${{ env.AGENT_ADDITIONAL_PERMISSIONS }}
+          prompt: |
             Refine PR #${{ github.event.pull_request.number }} in
             ${{ github.repository }} based on the conversation so far.
 
@@ -976,22 +939,6 @@ jobs:
               implementation paths for impl PRs. Do not invent new scope.
             - If a reviewer's ask conflicts with the spec, flag the conflict
               in the summary comment rather than silently resolving it.
-        run: |
-          export CLAUDE_ARGS="--permission-mode bypassPermissions"
-          # Action reads process.env.ADDITIONAL_PERMISSIONS at
-          # src/github/token.ts:35 when requesting the OIDC-exchanged
-          # installation token. Passing it via ALL_INPUTS JSON is NOT
-          # sufficient — must be an exported env var with this exact name.
-          export ADDITIONAL_PERMISSIONS="$AGENT_ADDITIONAL_PERMISSIONS"
-          ALL_INPUTS="$(jq -nc \
-            --arg prompt "$PROMPT" \
-            --arg api_key "$ANTHROPIC_API_KEY" \
-            --arg gh_token "$GITHUB_TOKEN" \
-            --arg claude_args "$CLAUDE_ARGS" \
-            --arg extra_perms "$AGENT_ADDITIONAL_PERMISSIONS" \
-            '{prompt: $prompt, anthropic_api_key: $api_key, github_token: $gh_token, claude_args: $claude_args, additional_permissions: $extra_perms}')"
-          export ALL_INPUTS
-          bun run /tmp/claude-code-action/src/entrypoints/run.ts
 
       - name: Remove openspec:start label
         if: always() && steps.check.outputs.run == 'true'
