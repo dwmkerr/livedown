@@ -261,10 +261,35 @@ Two people share a file across machines. One is the leader, the other joins and 
 
 See [Security Principles](../.claude/agents/security.md) for the full set of rules.
 
-- **Ed25519 signing** - pushes are signed with the edit key (private), verified with the public key
-- **Defense in depth** - relay verifies before broadcasting; watcher verifies before writing to disk
-- **URLs are locators, not credentials** - the viewer URL is safe to share publicly
-- **No custom crypto** - tweetnacl (Node/browser) and @noble/curves (relay) only
+Livedown uses **Ed25519 asymmetric signing** to protect the sharer's local files from unauthorized edits. When the sharer runs `livedown share`, the CLI generates an Ed25519 keypair:
+
+- **Edit key** (private key seed, 64 hex chars) — shared only with trusted editors.
+- **Public key** — sent to the relay and broadcast to all viewers.
+
+Every push message is signed with the private key. Three independent verification points enforce authorization:
+
+| Layer | Has | Verifies | Rejects |
+|-------|-----|----------|---------|
+| **Relay** | Public key | Signature on every push | Unsigned or invalid pushes are never broadcast |
+| **Watcher** | Private key (derives public key) | Signature on incoming updates | Forged updates are never written to disk |
+| **Browser** | Public key (from relay) | Edit key matches public key on entry | Wrong key is rejected before any push |
+
+A compromised relay still cannot forge updates that the local watcher would accept — the watcher re-verifies every signature before writing to disk.
+
+Principles:
+
+- **Ed25519 signing** — pushes signed with the edit key (private), verified with the public key.
+- **Defense in depth** — relay verifies before broadcasting; watcher verifies before writing to disk.
+- **URLs are locators, not credentials** — the viewer URL is safe to share publicly.
+- **No custom crypto** — [tweetnacl](https://github.com/dchest/tweetnacl-js) (Node/browser) and [@noble/curves](https://github.com/paulmillr/noble-curves) (relay) only.
+
+## PartyKit and Cloudflare Workers
+
+The relay runs on [PartyKit](https://partykit.io), which deploys to [Cloudflare Workers](https://workers.cloudflare.com). The relay uses [@noble/curves](https://github.com/paulmillr/noble-curves) for Ed25519 signature verification — a pure ESM library with no Node.js dependencies that bundles cleanly in Cloudflare's esbuild pipeline.
+
+The CLI and browser use [tweetnacl](https://github.com/dchest/tweetnacl-js) for Ed25519 operations. Both libraries implement RFC 8032 Ed25519 and produce compatible signatures.
+
+Rooms are ephemeral — they exist only while connections are active and have no persistent storage. The public key is held in memory for the room's lifetime and must be re-registered on each sharing session.
 
 ## What must stay in sync
 

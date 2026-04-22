@@ -1,29 +1,6 @@
 # Contributing
 
-## Getting Started
-
-```bash
-git clone git@github.com:dwmkerr/livedown.git
-cd livedown
-npm install
-npm run build
-npm link
-livedown share ./README.md
-```
-
-## Development
-
-Run the relay locally:
-
-```bash
-npx partykit dev
-```
-
-In another terminal, share a file against the local relay:
-
-```bash
-PARTYKIT_HOST=localhost:1999 npx ts-node src/cli.ts share README.md
-```
+See the [Developer Guide](README.md#developer-guide) in the README for how to clone, build, and run the stack locally.
 
 ## Pull Requests
 
