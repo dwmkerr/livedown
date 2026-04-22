@@ -74,6 +74,36 @@ that job SHALL be skipped.
 - **THEN** `actions/checkout` SHALL have already run in that job so the
   action files are present on disk
 
+### Requirement: Post-agent usage table injection
+
+The plan and implement jobs SHALL each include a post-agent step that
+parses the CI session log (`/home/runner/work/_temp/claude-execution-output.json`)
+using `jq`, extracts all `Skill` and `Task` tool_use invocations, and
+injects a usage table (per the `pr-usage-table` spec) into the PR body
+between `<!-- openspec-flow-usage-table -->` and
+`<!-- /openspec-flow-usage-table -->` markers, positioned after the
+recap paragraph and before the `---` separator. The agent prompts
+SHALL NOT be modified to self-report usage; the session log is the
+authoritative source.
+
+#### Scenario: Plan job injects usage table into spec PR
+
+- **WHEN** the plan job completes successfully and a `spec/<n>-*` PR is open
+- **THEN** a post-agent step SHALL parse the session log and inject a
+  usage table between the HTML comment markers into the spec PR body
+
+#### Scenario: Implement job injects usage table into impl PR
+
+- **WHEN** the implement job completes successfully and an `impl/<n>-*` PR is open
+- **THEN** a post-agent step SHALL parse the session log and inject a
+  usage table between the HTML comment markers into the impl PR body
+
+#### Scenario: Missing session log is handled gracefully
+
+- **WHEN** the session log file is not present at the expected path
+- **THEN** the injection step SHALL log a warning and exit 0 (not fail
+  the job) so label transitions and breadcrumb comments still proceed
+
 ### Requirement: No behaviour change from consolidation
 
 The plan and implement stages SHALL behave identically after

@@ -440,6 +440,85 @@ jobs:
           fi
           echo "Postflight ok — spec PR #$pr with $files file(s)."
 
+      - name: Inject usage table into spec PR body
+        if: success() && steps.check.outputs.run == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.AGENT_GITHUB_TOKEN || github.token }}
+          REPO: ${{ github.repository }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          SESSION_LOG: /home/runner/work/_temp/claude-execution-output.json
+        run: |
+          pr=$(gh pr list --repo "$REPO" --state open \
+            --search "head:spec/$ISSUE_NUMBER-" \
+            --json number --jq '.[0].number // empty')
+          [ -z "$pr" ] && { echo "No spec PR found — skipping usage table injection."; exit 0; }
+
+          # Parse CI session log to extract Skill and Task (sub-agent) invocations.
+          # The log is a single JSON blob (not JSONL) written by claude-code-action.
+          if [ ! -f "$SESSION_LOG" ]; then
+            echo "Session log not found at $SESSION_LOG — skipping usage table injection."
+            exit 0
+          fi
+
+          usages=$(jq -r '
+            .. | objects | select(.type? == "tool_use")
+            | select(.name == "Skill" or .name == "Task")
+            | [.name, (.input.skill // .input.subagent_type // .input.description // ""), (.input.args // .input.prompt // "" | .[0:80])]
+            | @tsv
+          ' "$SESSION_LOG" 2>/dev/null || echo "")
+
+          if [ -z "$usages" ]; then
+            echo "No skill/agent invocations found in session log — injecting empty table."
+          fi
+
+          # Build the Markdown table.
+          {
+            echo "| Step | Agent/Skill | Detail |"
+            echo "|------|-------------|--------|"
+            step=1
+            while IFS=$'\t' read -r tool_name skill_name detail; do
+              [ -z "$tool_name" ] && continue
+              printf "| %d | %s | %s |\n" "$step" "$skill_name" "${detail:0:80}"
+              step=$((step + 1))
+            done <<< "$usages"
+          } > /tmp/usage-table.md
+
+          # Read current PR body and inject table between markers.
+          current_body=$(gh pr view "$pr" --repo "$REPO" --json body --jq '.body')
+
+          open_marker='<!-- openspec-flow-usage-table -->'
+          close_marker='<!-- /openspec-flow-usage-table -->'
+          table_content=$(cat /tmp/usage-table.md)
+
+          # Build new body: inject markers + table after the recap paragraph,
+          # before the --- separator. If markers already exist, replace content
+          # between them. If not, insert before the first --- separator.
+          # Note: avoid 'close' as awk variable name — it is a gawk builtin.
+          if echo "$current_body" | grep -qF "$open_marker"; then
+            # Replace existing table block.
+            new_body=$(echo "$current_body" | awk \
+              -v open_m="$open_marker" \
+              -v close_m="$close_marker" \
+              -v table="$table_content" \
+              'BEGIN{skip=0}
+               $0 == open_m {print; print table; skip=1; next}
+               $0 == close_m {skip=0}
+               !skip {print}')
+          else
+            # Insert before the first --- separator.
+            new_body=$(echo "$current_body" | awk \
+              -v open_m="$open_marker" \
+              -v close_m="$close_marker" \
+              -v table="$table_content" \
+              'BEGIN{done=0}
+               !done && /^---$/ {print open_m; print table; print close_m; print; done=1; next}
+               {print}')
+          fi
+
+          echo "$new_body" > /tmp/new-body.md
+          gh pr edit "$pr" --repo "$REPO" --body-file /tmp/new-body.md
+          echo "Usage table injected into spec PR #$pr."
+
       - name: Flip label to openspec:spec-ready
         if: success() && steps.check.outputs.run == 'true'
         env:
@@ -734,6 +813,85 @@ jobs:
             exit 1
           fi
           echo "Postflight ok — impl PR #$pr exists."
+
+      - name: Inject usage table into impl PR body
+        if: success() && steps.verify-issue.outputs.run == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.AGENT_GITHUB_TOKEN || github.token }}
+          REPO: ${{ github.repository }}
+          ISSUE_NUMBER: ${{ steps.check.outputs.issue_number }}
+          SESSION_LOG: /home/runner/work/_temp/claude-execution-output.json
+        run: |
+          pr=$(gh pr list --repo "$REPO" --state open \
+            --search "head:impl/$ISSUE_NUMBER-" \
+            --json number --jq '.[0].number // empty')
+          [ -z "$pr" ] && { echo "No impl PR found — skipping usage table injection."; exit 0; }
+
+          # Parse CI session log to extract Skill and Task (sub-agent) invocations.
+          # The log is a single JSON blob (not JSONL) written by claude-code-action.
+          if [ ! -f "$SESSION_LOG" ]; then
+            echo "Session log not found at $SESSION_LOG — skipping usage table injection."
+            exit 0
+          fi
+
+          usages=$(jq -r '
+            .. | objects | select(.type? == "tool_use")
+            | select(.name == "Skill" or .name == "Task")
+            | [.name, (.input.skill // .input.subagent_type // .input.description // ""), (.input.args // .input.prompt // "" | .[0:80])]
+            | @tsv
+          ' "$SESSION_LOG" 2>/dev/null || echo "")
+
+          if [ -z "$usages" ]; then
+            echo "No skill/agent invocations found in session log — injecting empty table."
+          fi
+
+          # Build the Markdown table.
+          {
+            echo "| Step | Agent/Skill | Detail |"
+            echo "|------|-------------|--------|"
+            step=1
+            while IFS=$'\t' read -r tool_name skill_name detail; do
+              [ -z "$tool_name" ] && continue
+              printf "| %d | %s | %s |\n" "$step" "$skill_name" "${detail:0:80}"
+              step=$((step + 1))
+            done <<< "$usages"
+          } > /tmp/usage-table.md
+
+          # Read current PR body and inject table between markers.
+          current_body=$(gh pr view "$pr" --repo "$REPO" --json body --jq '.body')
+
+          open_marker='<!-- openspec-flow-usage-table -->'
+          close_marker='<!-- /openspec-flow-usage-table -->'
+          table_content=$(cat /tmp/usage-table.md)
+
+          # Build new body: inject markers + table after the recap paragraph,
+          # before the --- separator. If markers already exist, replace content
+          # between them. If not, insert before the first --- separator.
+          # Note: avoid 'close' as awk variable name — it is a gawk builtin.
+          if echo "$current_body" | grep -qF "$open_marker"; then
+            # Replace existing table block.
+            new_body=$(echo "$current_body" | awk \
+              -v open_m="$open_marker" \
+              -v close_m="$close_marker" \
+              -v table="$table_content" \
+              'BEGIN{skip=0}
+               $0 == open_m {print; print table; skip=1; next}
+               $0 == close_m {skip=0}
+               !skip {print}')
+          else
+            # Insert before the first --- separator.
+            new_body=$(echo "$current_body" | awk \
+              -v open_m="$open_marker" \
+              -v close_m="$close_marker" \
+              -v table="$table_content" \
+              'BEGIN{done=0}
+               !done && /^---$/ {print open_m; print table; print close_m; print; done=1; next}
+               {print}')
+          fi
+
+          echo "$new_body" > /tmp/new-body.md
+          gh pr edit "$pr" --repo "$REPO" --body-file /tmp/new-body.md
+          echo "Usage table injected into impl PR #$pr."
 
       - name: Flip label to openspec:review + breadcrumb spec PR
         if: success() && steps.verify-issue.outputs.run == 'true'
