@@ -115,6 +115,11 @@ env:
   # GitHub App `workflows: read and write` on the repo. See CLAUDE.md →
   # "Agent workflow permissions".
   AGENT_ADDITIONAL_PERMISSIONS: ${{ vars.AGENT_ADDITIONAL_PERMISSIONS }}
+  # Debug knob — if set to "true", the agent's tool-call output is
+  # streamed into the run log. Default off because it can leak prompts /
+  # repo content on public runs. Flip via the repo variable
+  # `OPENSPEC_FLOW_SHOW_FULL_OUTPUT` when investigating silent no-ops.
+  OPENSPEC_FLOW_SHOW_FULL_OUTPUT: ${{ vars.OPENSPEC_FLOW_SHOW_FULL_OUTPUT }}
 
 permissions:
   contents: write
@@ -356,6 +361,7 @@ jobs:
           github_token: ${{ secrets.AGENT_GITHUB_TOKEN || github.token }}
           override_github_token: ${{ secrets.AGENT_GITHUB_TOKEN }}
           additional_permissions: ${{ env.AGENT_ADDITIONAL_PERMISSIONS }}
+          show_full_output: ${{ env.OPENSPEC_FLOW_SHOW_FULL_OUTPUT }}
           prompt: |
             Drive issue #${{ github.event.issue.number }} in
             ${{ github.repository }} to a draft OpenSpec proposal PR.
@@ -697,6 +703,7 @@ jobs:
           github_token: ${{ secrets.AGENT_GITHUB_TOKEN || github.token }}
           override_github_token: ${{ secrets.AGENT_GITHUB_TOKEN }}
           additional_permissions: ${{ env.AGENT_ADDITIONAL_PERMISSIONS }}
+          show_full_output: ${{ env.OPENSPEC_FLOW_SHOW_FULL_OUTPUT }}
           prompt: |
             Drive issue #${{ steps.check.outputs.issue_number }} in
             ${{ github.repository }} through the OpenSpec implement stage.
@@ -904,6 +911,7 @@ jobs:
           github_token: ${{ secrets.AGENT_GITHUB_TOKEN || github.token }}
           override_github_token: ${{ secrets.AGENT_GITHUB_TOKEN }}
           additional_permissions: ${{ env.AGENT_ADDITIONAL_PERMISSIONS }}
+          show_full_output: ${{ env.OPENSPEC_FLOW_SHOW_FULL_OUTPUT }}
           prompt: |
             Refine PR #${{ github.event.pull_request.number }} in
             ${{ github.repository }} based on the conversation so far.
