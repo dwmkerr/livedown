@@ -95,6 +95,16 @@ env:
   # comments. Do not change casually — stale markers will leak.
   AGENT_COMMENT_MARKER: "<!-- openspec-flow-summary -->"
   REENGAGE_FOOTER: "Add the `openspec:start` label to re-engage the agent with the latest discussion."
+  # Extra scopes requested on the OIDC-exchanged installation token used by
+  # the agent step. Sourced from the repo/org variable
+  # `AGENT_ADDITIONAL_PERMISSIONS` so each project decides in its own
+  # Settings → Actions → Variables (not in source). Unset / empty =
+  # defaults (contents/pull_requests/issues: write). Set to
+  # `workflows: write` if implement tasks need to edit
+  # `.github/workflows/*.yaml` — also requires granting the Claude
+  # GitHub App `workflows: read and write` on the repo. See CLAUDE.md →
+  # "Agent workflow permissions".
+  AGENT_ADDITIONAL_PERMISSIONS: ${{ vars.AGENT_ADDITIONAL_PERMISSIONS }}
 
 permissions:
   contents: write
@@ -406,7 +416,8 @@ jobs:
             --arg api_key "$ANTHROPIC_API_KEY" \
             --arg gh_token "$GITHUB_TOKEN" \
             --arg claude_args "$CLAUDE_ARGS" \
-            '{prompt: $prompt, anthropic_api_key: $api_key, github_token: $gh_token, claude_args: $claude_args}')"
+            --arg extra_perms "$AGENT_ADDITIONAL_PERMISSIONS" \
+            '{prompt: $prompt, anthropic_api_key: $api_key, github_token: $gh_token, claude_args: $claude_args, additional_permissions: $extra_perms}')"
           export ALL_INPUTS
           bun run /tmp/claude-code-action/src/entrypoints/run.ts
 
@@ -718,7 +729,8 @@ jobs:
             --arg api_key "$ANTHROPIC_API_KEY" \
             --arg gh_token "$GITHUB_TOKEN" \
             --arg claude_args "$CLAUDE_ARGS" \
-            '{prompt: $prompt, anthropic_api_key: $api_key, github_token: $gh_token, claude_args: $claude_args}')"
+            --arg extra_perms "$AGENT_ADDITIONAL_PERMISSIONS" \
+            '{prompt: $prompt, anthropic_api_key: $api_key, github_token: $gh_token, claude_args: $claude_args, additional_permissions: $extra_perms}')"
           export ALL_INPUTS
           bun run /tmp/claude-code-action/src/entrypoints/run.ts
 
@@ -956,7 +968,8 @@ jobs:
             --arg api_key "$ANTHROPIC_API_KEY" \
             --arg gh_token "$GITHUB_TOKEN" \
             --arg claude_args "$CLAUDE_ARGS" \
-            '{prompt: $prompt, anthropic_api_key: $api_key, github_token: $gh_token, claude_args: $claude_args}')"
+            --arg extra_perms "$AGENT_ADDITIONAL_PERMISSIONS" \
+            '{prompt: $prompt, anthropic_api_key: $api_key, github_token: $gh_token, claude_args: $claude_args, additional_permissions: $extra_perms}')"
           export ALL_INPUTS
           bun run /tmp/claude-code-action/src/entrypoints/run.ts
 
