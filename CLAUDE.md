@@ -116,7 +116,8 @@ All set under repo Settings → Secrets and variables → Actions:
 - `NPM_TOKEN` — npm "Automation" / granular token with `package: write` on the `@dwmkerr` scope. Generate at npmjs.com → Access Tokens. Used by `deploy-npm` job in `deploy.yaml`.
 - `PARTYKIT_TOKEN` — generate with `npx partykit token generate` on a machine logged in as the relay owner (`dwmkerr`). Used by `deploy-partykit` job in `deploy.yaml`. Rotate by regenerating and pasting the new value into Actions secrets.
 - `CODECOV_TOKEN` — upload coverage from `validate` job.
-- `ANTHROPIC_API_KEY` — used by Claude-driven workflows (agent-actions, openspec-flow, security-review).
+- `ANTHROPIC_API_KEY` — used by Claude-driven workflows (agent-actions, openspec-flow, security-review). One of `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN` must be set.
+- `CLAUDE_CODE_OAUTH_TOKEN` — alternative to `ANTHROPIC_API_KEY`: runs Claude Code against your subscription instead of API billing. Generate with `claude setup-token` locally (requires the Claude Code CLI logged in to a Pro/Max subscription), paste into this secret. When both are set, the action prefers OAuth.
 - `AGENT_GITHUB_TOKEN` — PAT used by agent workflows that need repo write scope beyond the default `GITHUB_TOKEN`.
 
 `PARTYKIT_LOGIN` is the partykit username (currently `dwmkerr`). It is **not** a secret — it's hardcoded at the workflow `env:` level in `deploy.yaml`. Change it there if the relay account changes.

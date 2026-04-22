@@ -358,6 +358,7 @@ jobs:
         uses: ./.github/actions/openspec-flow-run-agent
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ secrets.AGENT_GITHUB_TOKEN || github.token }}
           override_github_token: ${{ secrets.AGENT_GITHUB_TOKEN }}
           additional_permissions: ${{ env.AGENT_ADDITIONAL_PERMISSIONS }}
@@ -700,6 +701,7 @@ jobs:
         uses: ./.github/actions/openspec-flow-run-agent
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ secrets.AGENT_GITHUB_TOKEN || github.token }}
           override_github_token: ${{ secrets.AGENT_GITHUB_TOKEN }}
           additional_permissions: ${{ env.AGENT_ADDITIONAL_PERMISSIONS }}
@@ -908,6 +910,7 @@ jobs:
         uses: ./.github/actions/openspec-flow-run-agent
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ secrets.AGENT_GITHUB_TOKEN || github.token }}
           override_github_token: ${{ secrets.AGENT_GITHUB_TOKEN }}
           additional_permissions: ${{ env.AGENT_ADDITIONAL_PERMISSIONS }}

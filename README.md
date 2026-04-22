@@ -18,8 +18,6 @@
   </p>
 </p>
 
-## Quickstart
-
 ```bash
 npx @dwmkerr/livedown share ./your-file.md
 ```
