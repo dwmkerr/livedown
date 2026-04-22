@@ -73,6 +73,40 @@ Run the security agent (`.claude/agents/security.md`) before merging security-se
 - CLI changes should include terminal screenshots for non-trivial changes
 - Never add breadcrumb comments — only explain *why*, not *what*
 
+## OpenSpec Flow
+
+Rules that apply when implementing against `.github/workflows/openspec-flow.yaml` or any of the `.github/actions/openspec-flow-*/` composite actions. Extracted later into a dedicated doc/skill.
+
+### Dedupe with composite actions, never inline twice
+
+If a block of workflow logic (env setup, bash script, `gh` sequence) would be the same across two or more of the `plan`, `implement`, `respond`, or `cleanup` jobs, extract it into a composite action under `.github/actions/openspec-flow-<verb>/action.yml` and reference it via `uses: ./.github/actions/openspec-flow-<verb>` in each caller. Do **not** inline duplicate copies across jobs. Pattern already established by `openspec-flow-prune-comments`, `openspec-flow-raise-comment`, `openspec-flow-flip-label`, `openspec-flow-handle-failure`, `openspec-flow-run-agent`.
+
+Rationale: env-var name drift (e.g. `AGENT_ADDITIONAL_PERMISSIONS` vs `ADDITIONAL_PERMISSIONS`) has silently broken flow behaviour multiple times. Single source of truth avoids this.
+
+### Claude session log location in CI
+
+The Claude Code GitHub Action writes its session to `/home/runner/work/_temp/claude-execution-output.json` — a single JSON blob, not line-delimited.
+
+Do **not** assume the interactive path pattern used by `dwmkerr/claude-toolkit`'s `grepsession.sh` (`$HOME/.claude/projects/-<cwd-mangled>/*.jsonl`). That path exists only on a developer's local machine running an interactive Claude Code session; it will be empty in CI.
+
+If you need to extract sub-agent or skill usage from a CI run, parse `/home/runner/work/_temp/claude-execution-output.json` directly with `jq`. Example filter for `tool_use` entries:
+
+```
+jq -r '
+  .. | objects | select(.type? == "tool_use")
+  | select(.name == "Skill" or .name == "Task")
+  | {name: .name, input: .input}
+'
+```
+
+### Archive must sync delta specs to main
+
+When `openspec-archive-change` runs for a change that adds a new capability (a `specs/<capability>/spec.md` under the change folder), the main spec at `openspec/specs/<capability>/spec.md` MUST be created or updated in the same impl PR. Silent-skipping the sync has been observed; if the skill does not emit the main-spec update, do it explicitly before opening the impl PR.
+
+### External-repo references must be grounded
+
+If the spec references any external repo, skill, plugin, or action (`dwmkerr/...`, `anthropics/...`, etc.), clone it to `/tmp` during EXPLORE and read the actual entry points. Do not assume interfaces based on name. If the repo's exposed surface does not match the spec's assumption (e.g. "it's a CLI" vs "it's a Claude Code plugin"), that is an Open Question / blocker, not something to hand-wave past.
+
 ## Deployment
 
 Two workflows, one responsibility each. **Internal vs external** is the split:
