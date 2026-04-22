@@ -86,18 +86,16 @@ runs:
           echo "::error::Neither anthropic_api_key nor claude_code_oauth_token was provided. Set one in the caller workflow."
           exit 1
         fi
-        # Prefer OAuth when set: suppress ANTHROPIC_API_KEY so the Claude
-        # Agent SDK cannot fall through to it. Without this, SDK default
-        # precedence is to try the API key first, which burns API credit
-        # even when the caller wanted subscription-backed auth.
-        if [ -n "$CLAUDE_CODE_OAUTH_TOKEN" ]; then
-          echo "Using CLAUDE_CODE_OAUTH_TOKEN (subscription auth); ANTHROPIC_API_KEY ignored for this run."
-          ANTHROPIC_API_KEY=""
-          unset ANTHROPIC_API_KEY
+        # Both set: warn, do not intervene. Claude Agent SDK precedence is
+        # API-key-wins (matches the local `claude` CLI). Operator must
+        # pick: delete the ANTHROPIC_API_KEY secret on the repo if they
+        # want OAuth/subscription auth to route.
+        if [ -n "$ANTHROPIC_API_KEY" ] && [ -n "$CLAUDE_CODE_OAUTH_TOKEN" ]; then
+          echo "::warning::Both ANTHROPIC_API_KEY and CLAUDE_CODE_OAUTH_TOKEN are set. The Claude Agent SDK uses the API key; OAuth is ignored. Delete the API key secret to route subscription auth."
         fi
         ALL_INPUTS="$(jq -nc \
           --arg prompt "$PROMPT" \
-          --arg api_key "${ANTHROPIC_API_KEY:-}" \
+          --arg api_key "$ANTHROPIC_API_KEY" \
           --arg oauth_token "$CLAUDE_CODE_OAUTH_TOKEN" \
           --arg gh_token "$GITHUB_TOKEN" \
           --arg claude_args "$CLAUDE_ARGS" \
