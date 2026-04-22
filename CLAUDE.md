@@ -101,6 +101,37 @@ All set under repo Settings → Secrets and variables → Actions:
 
 `PARTYKIT_LOGIN` is the partykit username (currently `dwmkerr`). It is **not** a secret — it's hardcoded at the workflow `env:` level in `deploy.yaml`. Change it there if the relay account changes.
 
+## Agent workflow permissions
+
+The OpenSpec Flow agent step (in `.github/workflows/openspec-flow.yaml`) runs `anthropics/claude-code-action`, which exchanges the OIDC token for a GitHub App installation token. That token grants **only** `contents: write`, `pull_requests: write`, `issues: write` by default — **not** `workflows: write`. Any agent attempt to push `.github/workflows/*.yaml` changes will be silently dropped from the commit or rejected at push.
+
+This is observable as impl PRs that archive + update main specs but contain zero workflow edits, even when the spec target is the flow workflow itself.
+
+To grant the agent `workflows: write`, two things are required (both must be set):
+
+**1. Repo / org variable `AGENT_ADDITIONAL_PERMISSIONS`**
+
+- Non-secret, lives in Settings → Secrets and variables → Actions → **Variables** tab → New repository variable.
+- Name: `AGENT_ADDITIONAL_PERMISSIONS`
+- Value: `workflows: write`
+- Unset / empty = action default (no extra scope).
+- Forwarded to `claude-code-action` as the `additional_permissions` input via the workflow's top-level `env:` block.
+
+```bash
+gh variable set AGENT_ADDITIONAL_PERMISSIONS --body "workflows: write"  # enable
+gh variable delete AGENT_ADDITIONAL_PERMISSIONS                        # disable
+```
+
+**2. Claude GitHub App permission on the repo**
+
+- Settings → **GitHub Apps** → Claude → Configure (the repo-level link)
+- Repository permissions → **Workflows** → Read and write
+- Save.
+
+Without step 2, step 1 has no effect — the OIDC exchange can only grant scopes the app is installed with.
+
+**Default state for new projects**: leave `AGENT_ADDITIONAL_PERMISSIONS` unset. Only turn on when implement tasks legitimately need to edit `.github/workflows/*.yaml`. livedown has it on because its own flow workflow is a primary implementation target (meta: the flow can modify itself).
+
 ## Key Files
 
 - `src/token.ts` — Ed25519 keypair generation, signing, verification (tweetnacl)
