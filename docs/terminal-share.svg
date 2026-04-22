@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 240" role="img" aria-label="livedown share terminal output">
+  <title>livedown share ./docs/architecture.md — terminal output</title>
+  <defs>
+    <style>
+      .bg { fill: #1e1e2e; }
+      .fg { fill: #cdd6f4; }
+      .prompt { fill: #a6e3a1; }
+      .label { fill: #cdd6f4; }
+      .url { fill: #89b4fa; text-decoration: underline; }
+      .key { fill: #f9e2af; }
+      .hint { fill: #6c7086; }
+      .mono { font-family: 'JetBrains Mono','Fira Code','SFMono-Regular',Consolas,monospace; font-size: 13px; }
+    </style>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="820" height="240" rx="6" ry="6"/>
+
+  <g class="mono">
+    <text x="20" y="40"><tspan class="prompt">$</tspan> <tspan class="fg">livedown share ./docs/architecture.md</tspan></text>
+
+    <text x="20" y="78"><tspan class="label">  Watching  </tspan><tspan class="fg">/Users/alice/repos/livedown/docs/architecture.md</tspan></text>
+    <text x="20" y="102"><tspan class="label">  Join      </tspan><tspan class="url">https://livedown.dwmkerr.partykit.dev/#d5dc3b/architecture.md</tspan> <tspan class="hint">(press o to open)</tspan></text>
+    <text x="20" y="126"><tspan class="label">  Edit key  </tspan><tspan class="key">ebd4••••••••••••••••••••••••••••••••••••••••••••••••••••••c46</tspan> <tspan class="hint">(press c to copy)</tspan></text>
+
+    <text x="20" y="170"><tspan class="hint">  o open  c copy key  q quit</tspan></text>
+
+    <text x="20" y="204"><tspan class="prompt">█</tspan></text>
+  </g>
+</svg>
