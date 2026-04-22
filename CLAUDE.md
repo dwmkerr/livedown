@@ -73,6 +73,65 @@ Run the security agent (`.claude/agents/security.md`) before merging security-se
 - CLI changes should include terminal screenshots for non-trivial changes
 - Never add breadcrumb comments — only explain *why*, not *what*
 
+## Deployment
+
+Two workflows, one responsibility each. **Internal vs external** is the split:
+
+- `.github/workflows/cicd.yaml` — **internal to the repo**. Validates PRs + pushes to `main`, then runs `release-please` to cut a release (tag + GitHub Release + CHANGELOG + version bump). When a release is cut, dispatches `deploy.yaml` with the new tag as `ref`. Nothing leaves the repo from this workflow.
+- `.github/workflows/deploy.yaml` — **external**. Publishes to npm (`deploy-npm` job) and deploys the relay to PartyKit (`deploy-partykit` job) in parallel. Both jobs preflight their auth (`npm whoami`, `npx partykit whoami`) and carry `timeout-minutes` caps so a misconfigured token surfaces as a fast auth failure rather than a hang.
+
+### Manual deploy
+
+```bash
+gh workflow run deploy.yaml --ref main                 # deploy tip of main
+gh workflow run deploy.yaml --ref v1.2.3 -f ref=v1.2.3 # deploy a specific release
+```
+
+Or: Actions tab → `deploy` → "Run workflow".
+
+### Secrets
+
+All set under repo Settings → Secrets and variables → Actions:
+
+- `NPM_TOKEN` — npm "Automation" / granular token with `package: write` on the `@dwmkerr` scope. Generate at npmjs.com → Access Tokens. Used by `deploy-npm` job in `deploy.yaml`.
+- `PARTYKIT_TOKEN` — generate with `npx partykit token generate` on a machine logged in as the relay owner (`dwmkerr`). Used by `deploy-partykit` job in `deploy.yaml`. Rotate by regenerating and pasting the new value into Actions secrets.
+- `CODECOV_TOKEN` — upload coverage from `validate` job.
+- `ANTHROPIC_API_KEY` — used by Claude-driven workflows (agent-actions, openspec-flow, security-review).
+- `AGENT_GITHUB_TOKEN` — PAT used by agent workflows that need repo write scope beyond the default `GITHUB_TOKEN`.
+
+`PARTYKIT_LOGIN` is the partykit username (currently `dwmkerr`). It is **not** a secret — it's hardcoded at the workflow `env:` level in `deploy.yaml`. Change it there if the relay account changes.
+
+## Agent workflow permissions
+
+The OpenSpec Flow agent step (in `.github/workflows/openspec-flow.yaml`) runs `anthropics/claude-code-action`, which exchanges the OIDC token for a GitHub App installation token. That token grants **only** `contents: write`, `pull_requests: write`, `issues: write` by default — **not** `workflows: write`. Any agent attempt to push `.github/workflows/*.yaml` changes will be silently dropped from the commit or rejected at push.
+
+This is observable as impl PRs that archive + update main specs but contain zero workflow edits, even when the spec target is the flow workflow itself.
+
+To grant the agent `workflows: write`, two things are required (both must be set):
+
+**1. Repo / org variable `AGENT_ADDITIONAL_PERMISSIONS`**
+
+- Non-secret, lives in Settings → Secrets and variables → Actions → **Variables** tab → New repository variable.
+- Name: `AGENT_ADDITIONAL_PERMISSIONS`
+- Value: `workflows: write`
+- Unset / empty = action default (no extra scope).
+- Forwarded to `claude-code-action` as the `additional_permissions` input via the workflow's top-level `env:` block.
+
+```bash
+gh variable set AGENT_ADDITIONAL_PERMISSIONS --body "workflows: write"  # enable
+gh variable delete AGENT_ADDITIONAL_PERMISSIONS                        # disable
+```
+
+**2. Claude GitHub App permission on the repo**
+
+- Settings → **GitHub Apps** → Claude → Configure (the repo-level link)
+- Repository permissions → **Workflows** → Read and write
+- Save.
+
+Without step 2, step 1 has no effect — the OIDC exchange can only grant scopes the app is installed with.
+
+**Default state for new projects**: leave `AGENT_ADDITIONAL_PERMISSIONS` unset. Only turn on when implement tasks legitimately need to edit `.github/workflows/*.yaml`. livedown has it on because its own flow workflow is a primary implementation target (meta: the flow can modify itself).
+
 ## Key Files
 
 - `src/token.ts` — Ed25519 keypair generation, signing, verification (tweetnacl)

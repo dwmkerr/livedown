@@ -12,6 +12,7 @@
 
   <p align="center">
     <a href="https://github.com/dwmkerr/livedown/actions/workflows/cicd.yaml"><img src="https://github.com/dwmkerr/livedown/actions/workflows/cicd.yaml/badge.svg" alt="cicd"></a>
+    <a href="https://github.com/dwmkerr/livedown/actions/workflows/deploy.yaml"><img src="https://github.com/dwmkerr/livedown/actions/workflows/deploy.yaml/badge.svg" alt="deploy"></a>
     <a href="https://www.npmjs.com/package/@dwmkerr/livedown"><img src="https://img.shields.io/npm/v/%40dwmkerr/livedown" alt="npm version"></a>
     <a href="https://codecov.io/gh/dwmkerr/livedown"><img src="https://codecov.io/gh/dwmkerr/livedown/graph/badge.svg" alt="codecov"></a>
   </p>
@@ -39,14 +40,6 @@ Options:
 - `-r, --relay <host>` — Relay host (default: `livedown.dwmkerr.partykit.dev`)
 - `-e, --editor <name>` — Your name shown to viewers
 - `-k, --edit-key <key>` — Edit key (auto-generated if omitted)
-
-### `livedown open <url>`
-
-Open a shared document in the browser.
-
-```bash
-livedown open https://livedown.dwmkerr.partykit.dev/#abc123/notes.md
-```
 
 ## Docker
 
