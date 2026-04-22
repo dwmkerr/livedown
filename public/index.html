@@ -537,14 +537,17 @@
     if (!isProtected) {
       el.textContent = '';
       el.className = '';
+      el.removeAttribute('title');
       return;
     }
     if (editUnlocked) {
       el.textContent = '(Editor)';
       el.className = 'editor';
       el.onclick = null;
+      el.title = 'You have entered the edit key \u2014 changes you make are signed and broadcast to all viewers.';
       el.innerHTML = '<span style="color:#a6e3a1">(Editor)</span>';
     } else {
+      el.title = 'This document is protected. Enter the edit key to make changes.';
       el.innerHTML = '(Read Only \u2014 <a id="profile-unlock">Enter Edit Key</a>)';
       document.getElementById('profile-unlock').addEventListener('click', function (e) {
         e.preventDefault();
