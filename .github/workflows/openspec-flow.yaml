@@ -411,6 +411,11 @@ jobs:
             - Conventional commit PR title (`chore:` prefix).
         run: |
           export CLAUDE_ARGS="--permission-mode bypassPermissions"
+          # Action reads process.env.ADDITIONAL_PERMISSIONS at
+          # src/github/token.ts:35 when requesting the OIDC-exchanged
+          # installation token. Passing it via ALL_INPUTS JSON is NOT
+          # sufficient — must be an exported env var with this exact name.
+          export ADDITIONAL_PERMISSIONS="$AGENT_ADDITIONAL_PERMISSIONS"
           ALL_INPUTS="$(jq -nc \
             --arg prompt "$PROMPT" \
             --arg api_key "$ANTHROPIC_API_KEY" \
@@ -724,6 +729,11 @@ jobs:
             - Conventional commit PR title.
         run: |
           export CLAUDE_ARGS="--permission-mode bypassPermissions"
+          # Action reads process.env.ADDITIONAL_PERMISSIONS at
+          # src/github/token.ts:35 when requesting the OIDC-exchanged
+          # installation token. Passing it via ALL_INPUTS JSON is NOT
+          # sufficient — must be an exported env var with this exact name.
+          export ADDITIONAL_PERMISSIONS="$AGENT_ADDITIONAL_PERMISSIONS"
           # DEBUG: show_full_output=true via INPUT_SHOW_FULL_OUTPUT env
           # (action reads process.env.INPUT_SHOW_FULL_OUTPUT at
           # src/entrypoints/run.ts:274 — ALL_INPUTS JSON is ignored for
@@ -968,6 +978,11 @@ jobs:
               in the summary comment rather than silently resolving it.
         run: |
           export CLAUDE_ARGS="--permission-mode bypassPermissions"
+          # Action reads process.env.ADDITIONAL_PERMISSIONS at
+          # src/github/token.ts:35 when requesting the OIDC-exchanged
+          # installation token. Passing it via ALL_INPUTS JSON is NOT
+          # sufficient — must be an exported env var with this exact name.
+          export ADDITIONAL_PERMISSIONS="$AGENT_ADDITIONAL_PERMISSIONS"
           ALL_INPUTS="$(jq -nc \
             --arg prompt "$PROMPT" \
             --arg api_key "$ANTHROPIC_API_KEY" \
