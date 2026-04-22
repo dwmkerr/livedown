@@ -421,6 +421,85 @@ jobs:
             - Write nothing outside `openspec/changes/<name>/`.
             - Conventional commit PR title (`chore:` prefix).
 
+      - name: Inject usage table into spec PR body
+        if: success() && steps.check.outputs.run == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.AGENT_GITHUB_TOKEN || github.token }}
+          REPO: ${{ github.repository }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          SESSION_LOG="/home/runner/work/_temp/claude-execution-output.json"
+          cat > /tmp/build-usage-table.py << 'PYEOF'
+          import sys, json
+          rows = []
+          def find_tool_uses(obj, depth=0):
+              if depth > 200:
+                  return
+              if isinstance(obj, dict):
+                  if obj.get("type") == "tool_use" and obj.get("name") in ("Skill", "Task"):
+                      rows.append(obj)
+                  for v in obj.values():
+                      find_tool_uses(v, depth + 1)
+              elif isinstance(obj, list):
+                  for item in obj:
+                      find_tool_uses(item, depth + 1)
+          try:
+              with open(sys.argv[1]) as f:
+                  find_tool_uses(json.load(f))
+          except Exception as e:
+              print(f"Warning: {e}", file=sys.stderr)
+          lines = []
+          for i, row in enumerate(rows, 1):
+              if row["name"] == "Skill":
+                  inp = row.get("input", {})
+                  skill = inp.get("skill") or "—"
+                  detail = (inp.get("args") or "—").strip() or "—"
+                  lines.append(f"| {i} | Skill: {skill} | {detail} |")
+              else:
+                  inp = row.get("input", {})
+                  agent = inp.get("subagent_type") or "—"
+                  desc = ((inp.get("description") or "—").split("\n")[0])[:100]
+                  lines.append(f"| {i} | Agent: {agent} | {desc} |")
+          if not lines:
+              lines = ["| — | — | No sub-agent or skill invocations recorded |"]
+          print("<!-- openspec-flow-usage-table -->")
+          print("| Step | Agent/Skill | Detail |")
+          print("|------|-------------|--------|")
+          for line in lines:
+              print(line)
+          print("<!-- /openspec-flow-usage-table -->")
+          PYEOF
+          python3 /tmp/build-usage-table.py "$SESSION_LOG" > /tmp/usage-table.md
+          PR_NUMBER=$(gh pr list --repo "$REPO" --state open \
+            --search "head:spec/$ISSUE_NUMBER-" \
+            --json number --jq '.[0].number // empty')
+          if [ -z "$PR_NUMBER" ]; then
+            echo "No open spec PR found — skipping usage table injection"
+            exit 0
+          fi
+          gh pr view "$PR_NUMBER" --repo "$REPO" --json body --jq '.body' > /tmp/pr-body.txt
+          cat > /tmp/inject-table.py << 'PYEOF'
+          import re
+          with open("/tmp/usage-table.md") as f:
+              table_block = f.read().strip()
+          with open("/tmp/pr-body.txt") as f:
+              body = f.read()
+          open_m = "<!-- openspec-flow-usage-table -->"
+          close_m = "<!-- /openspec-flow-usage-table -->"
+          if open_m in body and close_m in body:
+              pattern = re.escape(open_m) + r".*?" + re.escape(close_m)
+              new_body = re.sub(pattern, table_block, body, flags=re.DOTALL)
+          else:
+              new_body = re.sub(r"^---$", table_block + "\n\n---", body, count=1, flags=re.MULTILINE)
+              if new_body == body:
+                  new_body = body.rstrip() + "\n\n" + table_block + "\n"
+          with open("/tmp/pr-body-new.txt", "w") as f:
+              f.write(new_body)
+          PYEOF
+          python3 /tmp/inject-table.py
+          gh pr edit "$PR_NUMBER" --repo "$REPO" --body-file /tmp/pr-body-new.txt
+          echo "Usage table injected into spec PR #$PR_NUMBER"
+
       # Postflight: plan agent must open a spec PR with at least one file
       # change. Empty diffs can happen when the change folder already
       # exists on main and ff-change silently no-ops (see #52 / PR #64).
@@ -724,6 +803,85 @@ jobs:
             CONSTRAINTS
             - Change folder ends under `openspec/changes/archive/<name>/`.
             - Conventional commit PR title.
+
+      - name: Inject usage table into impl PR body
+        if: success() && steps.verify-issue.outputs.run == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.AGENT_GITHUB_TOKEN || github.token }}
+          REPO: ${{ github.repository }}
+          ISSUE_NUMBER: ${{ steps.check.outputs.issue_number }}
+        run: |
+          SESSION_LOG="/home/runner/work/_temp/claude-execution-output.json"
+          cat > /tmp/build-usage-table.py << 'PYEOF'
+          import sys, json
+          rows = []
+          def find_tool_uses(obj, depth=0):
+              if depth > 200:
+                  return
+              if isinstance(obj, dict):
+                  if obj.get("type") == "tool_use" and obj.get("name") in ("Skill", "Task"):
+                      rows.append(obj)
+                  for v in obj.values():
+                      find_tool_uses(v, depth + 1)
+              elif isinstance(obj, list):
+                  for item in obj:
+                      find_tool_uses(item, depth + 1)
+          try:
+              with open(sys.argv[1]) as f:
+                  find_tool_uses(json.load(f))
+          except Exception as e:
+              print(f"Warning: {e}", file=sys.stderr)
+          lines = []
+          for i, row in enumerate(rows, 1):
+              if row["name"] == "Skill":
+                  inp = row.get("input", {})
+                  skill = inp.get("skill") or "—"
+                  detail = (inp.get("args") or "—").strip() or "—"
+                  lines.append(f"| {i} | Skill: {skill} | {detail} |")
+              else:
+                  inp = row.get("input", {})
+                  agent = inp.get("subagent_type") or "—"
+                  desc = ((inp.get("description") or "—").split("\n")[0])[:100]
+                  lines.append(f"| {i} | Agent: {agent} | {desc} |")
+          if not lines:
+              lines = ["| — | — | No sub-agent or skill invocations recorded |"]
+          print("<!-- openspec-flow-usage-table -->")
+          print("| Step | Agent/Skill | Detail |")
+          print("|------|-------------|--------|")
+          for line in lines:
+              print(line)
+          print("<!-- /openspec-flow-usage-table -->")
+          PYEOF
+          python3 /tmp/build-usage-table.py "$SESSION_LOG" > /tmp/usage-table.md
+          PR_NUMBER=$(gh pr list --repo "$REPO" --state open \
+            --search "head:impl/$ISSUE_NUMBER-" \
+            --json number --jq '.[0].number // empty')
+          if [ -z "$PR_NUMBER" ]; then
+            echo "No open impl PR found — skipping usage table injection"
+            exit 0
+          fi
+          gh pr view "$PR_NUMBER" --repo "$REPO" --json body --jq '.body' > /tmp/pr-body.txt
+          cat > /tmp/inject-table.py << 'PYEOF'
+          import re
+          with open("/tmp/usage-table.md") as f:
+              table_block = f.read().strip()
+          with open("/tmp/pr-body.txt") as f:
+              body = f.read()
+          open_m = "<!-- openspec-flow-usage-table -->"
+          close_m = "<!-- /openspec-flow-usage-table -->"
+          if open_m in body and close_m in body:
+              pattern = re.escape(open_m) + r".*?" + re.escape(close_m)
+              new_body = re.sub(pattern, table_block, body, flags=re.DOTALL)
+          else:
+              new_body = re.sub(r"^---$", table_block + "\n\n---", body, count=1, flags=re.MULTILINE)
+              if new_body == body:
+                  new_body = body.rstrip() + "\n\n" + table_block + "\n"
+          with open("/tmp/pr-body-new.txt", "w") as f:
+              f.write(new_body)
+          PYEOF
+          python3 /tmp/inject-table.py
+          gh pr edit "$PR_NUMBER" --repo "$REPO" --body-file /tmp/pr-body-new.txt
+          echo "Usage table injected into impl PR #$PR_NUMBER"
 
       # Postflight: agent often reports success but produces no impl PR
       # (silent no-op — #48). Assert the expected artifact exists;
