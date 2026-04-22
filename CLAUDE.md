@@ -99,6 +99,10 @@ All set under repo Settings → Secrets and variables → Actions:
 - `ANTHROPIC_API_KEY` — used by Claude-driven workflows (agent-actions, openspec-flow, security-review).
 - `AGENT_GITHUB_TOKEN` — PAT used by agent workflows that need repo write scope beyond the default `GITHUB_TOKEN`.
 
+### Session Logs (optional)
+
+- `ENCRYPT_SESSION_LOGS_PASSWORD` — optional symmetric passphrase for `age` encryption of captured session transcripts. When set, the OpenSpec Flow workflow encrypts each agent job's session log before uploading it as a workflow artifact. **Required on public repos** when `attach_session_logs=yes` — plaintext upload is refused without it. Generate a strong random passphrase (e.g., `openssl rand -base64 32`) and store it as a repo secret. Decrypt artifacts locally with: `age --decrypt -p session-<job>.json.age`.
+
 `PARTYKIT_LOGIN` is the partykit username (currently `dwmkerr`). It is **not** a secret — it's hardcoded at the workflow `env:` level in `deploy.yaml`. Change it there if the relay account changes.
 
 ## Agent workflow permissions
