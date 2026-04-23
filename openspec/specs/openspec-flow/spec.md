@@ -26,12 +26,20 @@ call `openspec-flow-preflight` before the agent step and
 action sets `skip=true`, the agent step and all subsequent steps in
 that job SHALL be skipped.
 
+The plan and implement jobs SHALL each include a post-agent step that
+scrapes the Claude session log using `dwmkerr/claude-toolkit` and injects
+a usage table (see `pr-usage-table` spec) into the PR body, positioned
+after the recap paragraph and before the `---` separator. The agent
+prompts SHALL NOT be modified to self-report usage; the session log is the
+authoritative source.
+
 #### Scenario: Plan job fires on issue assignment or start label
 - **WHEN** a GitHub issue is assigned to the agent login, or the
   `openspec:start` label is added to an issue with no lifecycle label
-- **THEN** the `plan` job runs: preflight is called first; if `skip=false`,
-  the agent runs; postflight is called after the agent; if postflight
-  fails, the handle-failure step runs
+- **THEN** the `plan` job runs, opens a `spec/<n>-<slug>` proposal PR,
+  and a post-agent step scrapes the session log via `dwmkerr/claude-toolkit`
+  and injects a usage table between `<!-- openspec-flow-usage-table -->`
+  and `<!-- /openspec-flow-usage-table -->` markers into the PR body
 
 #### Scenario: Preflight skip aborts agent run cleanly
 - **WHEN** the preflight action sets `skip=true` for any job
@@ -48,8 +56,10 @@ that job SHALL be skipped.
 #### Scenario: Implement job fires on proposal PR merge
 - **WHEN** a PR whose head branch matches `spec/<n>-<slug>` is merged
   into main and the linked issue is in `openspec:spec-ready`
-- **THEN** the `implement` job runs with the same preflight/postflight
-  guards as the plan job
+- **THEN** the `implement` job runs, opens an `impl/<n>-<slug>` code PR,
+  and a post-agent step scrapes the session log via `dwmkerr/claude-toolkit`
+  and injects a usage table between `<!-- openspec-flow-usage-table -->`
+  and `<!-- /openspec-flow-usage-table -->` markers into the PR body
 
 #### Scenario: Respond job fires on openspec:start label on a PR
 - **WHEN** the `openspec:start` label is added to a PR whose branch

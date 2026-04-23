@@ -105,6 +105,11 @@ env:
   # comments. Do not change casually — stale markers will leak.
   AGENT_COMMENT_MARKER: "<!-- openspec-flow-summary -->"
   REENGAGE_FOOTER: "Add the `openspec:start` label to re-engage the agent with the latest discussion."
+  # Version of dwmkerr/claude-toolkit used for the session-log usage-table scraping
+  # approach. The grepsession pattern (grep JSONL for "name":"Skill" / "name":"Task")
+  # is adapted inline for the CI path ($RUNNER_TEMP/claude-execution-output.json).
+  # Update when the toolkit releases a new version that changes the session log format.
+  CLAUDE_TOOLKIT_REF: "v0.1.6"
   # Extra scopes requested on the OIDC-exchanged installation token used by
   # the agent step. Sourced from the repo/org variable
   # `AGENT_ADDITIONAL_PERMISSIONS` so each project decides in its own
@@ -428,6 +433,14 @@ jobs:
             - Write nothing outside `openspec/changes/<name>/`.
             - Conventional commit PR title (`chore:` prefix).
 
+      - name: Inject usage table into spec PR body
+        if: success() && steps.check.outputs.run == 'true'
+        uses: ./.github/actions/openspec-flow-inject-usage-table
+        with:
+          branch_prefix: spec
+          issue_number: ${{ github.event.issue.number }}
+          github_token: ${{ secrets.AGENT_GITHUB_TOKEN || github.token }}
+
       # Postflight: plan agent must open a spec PR with at least one file
       # change. Empty diffs can happen when the change folder already
       # exists on main and ff-change silently no-ops (see #52 / PR #64).
@@ -733,6 +746,14 @@ jobs:
             CONSTRAINTS
             - Change folder ends under `openspec/changes/archive/<name>/`.
             - Conventional commit PR title.
+
+      - name: Inject usage table into impl PR body
+        if: success() && steps.verify-issue.outputs.run == 'true'
+        uses: ./.github/actions/openspec-flow-inject-usage-table
+        with:
+          branch_prefix: impl
+          issue_number: ${{ steps.check.outputs.issue_number }}
+          github_token: ${{ secrets.AGENT_GITHUB_TOKEN || github.token }}
 
       # Postflight: agent often reports success but produces no impl PR
       # (silent no-op — #48). Assert the expected artifact exists;
