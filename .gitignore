@@ -2,6 +2,7 @@
 dist/
 node_modules/
 scratch/
+!design/project/scratch/
 *.env
 !*.env.sample
 .partykit/
