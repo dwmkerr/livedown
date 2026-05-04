@@ -37,6 +37,8 @@ npm run lint   # eslint
 npm run build  # tsc
 ```
 
+**MANDATORY before opening or updating a PR:** run `npm run lint && npm run build && npm test` (or `make test` for the full suite including integration). All three must pass. Never push or open a PR while any of them are red — CI will fail and the diff lands in a broken state. If a test is unrelated to the change but already failing on the branch, fix or quarantine it first.
+
 ### Browser end-to-end tests with Playwright
 
 Use the `playwright-webkit` MCP tools to test the browser viewer against a real running CLI. The standard test scenario:

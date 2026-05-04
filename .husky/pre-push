@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# Pre-push: lint, build, and run unit tests. Block the push on any failure so
+# nobody ever pushes a red branch. Bypass with `git push --no-verify` only with
+# explicit user approval (see CLAUDE.md).
+set -e
+
+echo "→ lint"
+npm run lint --silent
+
+echo "→ build"
+npm run build --silent
+
+echo "→ test"
+npm test --silent
