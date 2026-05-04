@@ -8,6 +8,10 @@ Livedown shares local markdown files live via WebSocket. Security is critical â€
 
 **Primary source of truth: [`docs/architecture.md`](docs/architecture.md).** It documents the overview diagram, journey flows, browser state machine, message types, and security model.
 
+## Design
+
+**Viewer chrome and landing page follow [`docs/design.md`](docs/design.md).** Any change to the header layout, mode toggle, roster/lock affordances, or landing page must update `docs/design.md` in the same PR. Code that drifts from the design doc is a bug.
+
 **This documentation MUST be kept up to date.** Any PR that changes any of the following MUST update `docs/architecture.md` in the same PR:
 
 - Protocol or message types (new messages, changed fields)
