@@ -241,12 +241,16 @@ function promptForFile(): Promise<string> {
 }
 
 // No subcommand — prompt for file path. Bare flags (e.g. `--dev`) without a
-// subcommand should still drop into the prompt rather than printing help.
+// subcommand still drop into the prompt, but `--help` / `--version` must
+// reach commander so users (and the CLI tests) get usage and version output.
 const argv = process.argv.slice(2);
 const knownSubcommands = new Set(["share", "help"]);
 const hasSubcommand = argv.some((a) => knownSubcommands.has(a));
+const isHelpOrVersion = argv.some((a) =>
+  ["-h", "--help", "-V", "--version"].includes(a)
+);
 
-if (!hasSubcommand) {
+if (!hasSubcommand && !isHelpOrVersion) {
   const dev = argv.includes("-D") || argv.includes("--dev");
   (async () => {
     try {
