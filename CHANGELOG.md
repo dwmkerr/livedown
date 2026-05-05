@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.1.5](https://github.com/dwmkerr/livedown/compare/v0.1.4...v0.1.5) (2026-05-05)
+
+
+### Features
+
+* implement spec for [#52](https://github.com/dwmkerr/livedown/issues/52) show subagent/skill usage table in PR bodies ([#103](https://github.com/dwmkerr/livedown/issues/103)) ([d434469](https://github.com/dwmkerr/livedown/commit/d434469e7752b9e3c659359875570b1acf8099f6))
+* **openspec-flow:** sub-agent delegation is opt-in via repo variable ([#93](https://github.com/dwmkerr/livedown/issues/93)) ([103e809](https://github.com/dwmkerr/livedown/commit/103e809429b3daa6c7b868afd4dedbb2d0f577aa))
+* **openspec-flow:** support CLAUDE_CODE_OAUTH_TOKEN as alternative to API key ([#97](https://github.com/dwmkerr/livedown/issues/97)) ([8ae480b](https://github.com/dwmkerr/livedown/commit/8ae480bb6dfcacd8b1da31a93bf4e3b3d869b975))
+* viewer + landing redesign (V2 Reader-primary) ([#111](https://github.com/dwmkerr/livedown/issues/111)) ([1f9c1e6](https://github.com/dwmkerr/livedown/commit/1f9c1e6705ca6e0a5a7d3abf6758d9fb9c742c48))
+
+
+### Bug Fixes
+
+* **action:** drop ${{ secrets.* }} from composite action input description ([#89](https://github.com/dwmkerr/livedown/issues/89)) ([620f5e2](https://github.com/dwmkerr/livedown/commit/620f5e253ef7644cd2b67913c0377eed6f882971))
+* **cicd:** grant actions:write to dispatch-deploy job ([#74](https://github.com/dwmkerr/livedown/issues/74)) ([0edb94e](https://github.com/dwmkerr/livedown/commit/0edb94e12ecded9ae96340d09544e30c966fc408))
+* **openspec-flow:** allow agent to edit .github/workflows via repo var ([#80](https://github.com/dwmkerr/livedown/issues/80)) ([f8357bc](https://github.com/dwmkerr/livedown/commit/f8357bc00ee6099be008981c7889849d3cc3b59d))
+* **openspec-flow:** export ADDITIONAL_PERMISSIONS with correct env name ([#86](https://github.com/dwmkerr/livedown/issues/86)) ([be147f5](https://github.com/dwmkerr/livedown/commit/be147f5c2c13799770cb8868fa75377611357044))
+* **run-agent:** OAuth token takes precedence; API key suppressed when set ([#100](https://github.com/dwmkerr/livedown/issues/100)) ([2054aa3](https://github.com/dwmkerr/livedown/commit/2054aa37c412062dc8b86bc1471229e18f2d84e5))
+* **run-agent:** revert OAuth precedence; SDK API-key-wins is correct ([#102](https://github.com/dwmkerr/livedown/issues/102)) ([e24f28d](https://github.com/dwmkerr/livedown/commit/e24f28d20aaae30560cfaf328fc67529e4ecc0be))
+
 ## [0.1.4](https://github.com/dwmkerr/livedown/compare/v0.1.3...v0.1.4) (2026-04-21)
 
 
