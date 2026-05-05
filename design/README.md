@@ -1,25 +1,21 @@
-# CODING AGENTS: READ THIS FIRST
+# Design
 
-This is a **handoff bundle** from Claude Design (claude.ai/design).
+Static design artifacts for the livedown viewer, landing page, and CLI surface.
 
-A user mocked up designs in HTML/CSS/JS using an AI design tool, then exported this bundle so a coding agent can implement the designs for real.
+The source of truth lives on **Claude Design** — edit there, re-export, replace this folder wholesale. Do not edit prototypes in place; they will be overwritten.
 
-## What you should do — IMPORTANT
+- **Canvas** — _replace this with the canvas URL on claude.ai/design once known_
+- **Bundle re-export** — Claude Design → Export → save the resulting `livedown/` directory over `./design/`
 
-**Read the chat transcripts first.** There are 1 chat transcript(s) in `livedown/chats/`. The transcripts show the full back-and-forth between the user and the design assistant — they tell you **what the user actually wants** and **where they landed** after iterating. Don't skip them. The final HTML files are the output, but the chat is where the intent lives.
+## Contents
 
-**Read `livedown/project/Livedown Designs.html` in full.** The user had this file open when they triggered the handoff, so it's almost certainly the primary design they want built. Read it top to bottom — don't skim. Then **follow its imports**: open every file it pulls in (shared components, CSS, scripts) so you understand how the pieces fit together before you start implementing.
+- `project/Livedown Designs.html` — entry point that loads the JSX prototypes
+- `project/src/*.jsx` — viewer, landing, system-diagram, viewer-states, app shell
+- `project/scratch/*.png` — landing iteration screenshots from the design canvas
+- `project/uploads/` — reference screenshots used as design inputs
 
-**If anything is ambiguous, ask the user to confirm before you start implementing.** It's much cheaper to clarify scope up front than to build the wrong thing.
+## Implementation rules
 
-## About the design files
+See [`../docs/design.md`](../docs/design.md) for the implementation contract (palette, header layout, mode semantics, guest numbering). Any visual change to the CLI output, viewer chrome, or landing page must update both the Claude Design canvas and `docs/design.md` in the same PR — the doc, the prototypes, and the shipped code stay in lockstep.
 
-The design medium is **HTML/CSS/JS** — these are prototypes, not production code. Your job is to **recreate them pixel-perfectly** in whatever technology makes sense for the target codebase (React, Vue, native, whatever fits). Match the visual output; don't copy the prototype's internal structure unless it happens to fit.
-
-**Don't render these files in a browser or take screenshots unless the user asks you to.** Everything you need — dimensions, colors, layout rules — is spelled out in the source. Read the HTML and CSS directly; a screenshot won't tell you anything they don't.
-
-## Bundle contents
-
-- `livedown/README.md` — this file
-- `livedown/chats/` — conversation transcripts (read these!)
-- `livedown/project/` — the `Livedown` project files (HTML prototypes, assets, components)
+The scanner ignore at `.guardrails/ignore` excludes this whole tree from security scans because the prototypes are static design artifacts, never compiled into runtime code.
