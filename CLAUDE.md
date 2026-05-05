@@ -18,7 +18,7 @@ Livedown shares local markdown files live via WebSocket. Security is critical �
 - Browser viewer styles (header, panes, modals, popovers, color tokens, typography)
 - Landing page styles (`public/index.html` landing block or `site/index.html`)
 
-must also be reflected in the Claude Design canvas before the PR is considered done. Update the prototypes there, re-export the bundle, and replace `./design/` wholesale (per `docs/design.md` "Source of truth"). The doc, the prototypes, and the shipped code stay in lockstep — divergence here is what invented the design-vs-implementation drift problem these rules exist to stop.
+must also be reflected in the Claude Design canvas before the PR is considered done. Update the prototypes there, re-export the bundle, and drop a new `design/design-bundle-N.zip` (incrementing N) — older snapshots stay available (per `docs/design.md` "Source of truth"). The doc, the canvas, and the shipped code stay in lockstep — divergence here is what invented the design-vs-implementation drift problem these rules exist to stop.
 
 **This documentation MUST be kept up to date.** Any PR that changes any of the following MUST update `docs/architecture.md` in the same PR:
 

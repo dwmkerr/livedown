@@ -92,9 +92,9 @@ The old bundled landing that lived inside `public/index.html` is gone.
 
 ## Source of truth
 
-Design bundle committed at [`./design/`](../design/) — JSX prototypes from a Claude Design canvas (`design/project/`). The canvas itself lives on claude.ai/design; the link is in [`design/README.md`](../design/README.md). Match the visual output of the prototypes, not their internal structure — they are HTML/CSS/JSX sketches, not React components for production.
+Design bundles are committed under [`./design/`](../design/) as zip snapshots (`design-bundle-N.zip`). The canvas itself lives on claude.ai/design; the link is in [`design/README.md`](../design/README.md). Match the visual output of the prototypes, not their internal structure — they are HTML/CSS/JSX sketches, not React components for production.
 
-Refresh the bundle by re-exporting from the canvas and replacing `./design/` wholesale; do not edit prototypes in place. Chat transcripts are intentionally not committed — intent lives in the canvas + this doc.
+Refresh by re-exporting from the canvas and dropping a new `design-bundle-N.zip` (incrementing N) so older snapshots stay available. Unpack on demand into `scratch/`; never commit the unpacked contents. Chat transcripts are intentionally not committed — intent lives in the canvas + this doc.
 
 ## Follow-ons
 
