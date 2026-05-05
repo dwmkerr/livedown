@@ -4,6 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>livedown</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/tweetnacl@1.0.3/nacl-fast.min.js"></script>
   <script type="module">
@@ -16,257 +19,543 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.17/mode/markdown/markdown.min.js"></script>
 
   <style>
+    :root {
+      --mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      --sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+
+      /* Dark code pane — Catppuccin-adjacent */
+      --ld-bg: #1e1e2e;
+      --ld-bg-2: #262634;
+      --ld-border: #313244;
+      --ld-fg: #cdd6f4;
+      --ld-fg-dim: #8a8aa0;
+      --ld-blue: #89b4fa;
+      --ld-green: #a6e3a1;
+      --ld-pink: #f38ba8;
+      --ld-peach: #fab387;
+      --ld-yellow: #f9e2af;
+      --ld-mauve: #cba6f7;
+      --ld-teal: #94e2d5;
+    }
+
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    html, body { height: 100%; overflow: hidden;
-                 font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+    html, body { height: 100%; overflow: hidden; font-family: var(--sans); background: #fafafa; color: #17171f; }
 
-    /* ── Status bar ─────────────────────────────────────────── */
-    #statusbar {
-      height: 32px; background: #1e1e2e; color: #cdd6f4;
-      display: flex; align-items: center;
-      font-size: 12px; border-bottom: 1px solid #313244;
-      overflow: hidden; white-space: nowrap; flex-shrink: 0;
+    /* ── Header (V2 Reader-primary) ─────────────────────────── */
+    #header {
+      height: 52px; flex-shrink: 0;
+      background: #fff; border-bottom: 1px solid #e4e6eb;
+      display: grid; grid-template-columns: 1fr auto 1fr; align-items: center;
+      padding: 0 14px; gap: 14px;
+      font-family: var(--sans); font-size: 12.5px; color: #3a3a48;
+      position: relative; z-index: 10;
     }
-    .sb-seg {
-      display: flex; align-items: center; gap: 5px;
-      padding: 0 12px; height: 100%;
-      border-right: 1px solid #313244; flex-shrink: 0;
+    .hdr-left, .hdr-right {
+      display: flex; align-items: center; gap: 10px; min-width: 0;
     }
-    #sb-file   { color: #89b4fa; }
-    #sb-owner  { color: #a6e3a1; }
-    #sb-repo   { color: #89b4fa; text-decoration: none; }
-    #sb-repo:hover { text-decoration: underline; }
-    #sb-lastedit { color: #cba6f7; }
+    .hdr-right { justify-content: flex-end; }
+    .hdr-center { display: flex; justify-content: center; }
 
-    /* Connection dot */
-    #sb-dot { width: 7px; height: 7px; border-radius: 50%; background: #6c7086; transition: background .4s; }
-    #sb-dot.live    { background: #a6e3a1; }
-    #sb-dot.offline { background: #f38ba8; }
-    #sb-label { color: #6c7086; }
-
-    /* Join link + copy button */
-    #sb-join { cursor: pointer; }
-    #sb-join:hover { background: #313244; }
-    #sb-join-url {
-      color: #89b4fa; text-decoration: none;
-      max-width: 220px; overflow: hidden; text-overflow: ellipsis;
-      display: inline-block; vertical-align: middle;
+    /* Icon buttons */
+    .icon-btn {
+      width: 28px; height: 28px; border: 1px solid transparent; border-radius: 6px;
+      background: transparent; color: #3a3a48; cursor: pointer;
+      display: inline-flex; align-items: center; justify-content: center; padding: 0;
+      text-decoration: none;
     }
-    #sb-join-url:hover { text-decoration: underline; }
-    #sb-join-copy {
-      background: none; border: none; cursor: pointer; padding: 0;
-      display: flex; align-items: center; opacity: .5; transition: opacity .2s;
+    .icon-btn:hover { background: #f5f6f8; }
+    .icon-btn.copied { background: #eef1f7; color: #2a7a2a; }
+    .icon-btn svg { display: block; }
+
+    /* Wordmark */
+    .brand {
+      font-family: var(--mono); font-size: 17px; font-weight: 700;
+      color: #17171f; letter-spacing: -0.02em; text-decoration: none;
+      padding: 0 4px; line-height: 1;
     }
-    #sb-join-copy:hover { opacity: 1; }
-    #sb-join-copy svg { width: 13px; height: 13px; }
-    .copy-flash { opacity: 1 !important; }
+    .brand:hover { color: var(--ld-blue); }
+    .hdr-sep {
+      width: 1px; height: 22px; background: #e4e6eb; margin: 0 6px;
+    }
 
-    /* Edits badge */
-    #sb-edits-seg { cursor: pointer; position: relative; user-select: none; }
-    #sb-edits-seg:hover { background: #313244; }
-    #sb-edits-count { color: #f9e2af; font-weight: 600; }
+    /* File pill (dot + clickable filename/copy) */
+    .file-pill {
+      display: flex; align-items: center; gap: 6px; min-width: 0;
+    }
+    .file-pill .dot {
+      width: 7px; height: 7px; border-radius: 50%; background: #c0c4cc;
+      flex-shrink: 0; transition: background .3s, box-shadow .3s;
+    }
+    .file-pill .dot.live    { background: #22a355; box-shadow: 0 0 0 3px rgba(34,163,85,0.14); }
+    .file-pill .dot.offline { background: #d9453d; }
+    .file-link {
+      display: inline-flex; align-items: center; gap: 6px; min-width: 0;
+      background: none; border: none; cursor: pointer; padding: 3px 7px;
+      border-radius: 5px;
+      font-family: var(--mono); font-size: 14.5px; font-weight: 500;
+      color: #17171f; letter-spacing: -0.005em;
+      transition: color .12s, background .12s;
+    }
+    .file-link .name {
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 420px;
+    }
+    .file-link .cp { opacity: 0; transition: opacity .12s; flex-shrink: 0; color: inherit; }
+    .file-link:hover { color: var(--ld-blue); background: #eef4ff; }
+    .file-link:hover .cp { opacity: 0.7; }
+    .file-link:focus-visible { outline: 2px solid var(--ld-blue); outline-offset: 1px; }
+    .file-link.copied { color: #2a7a2a; background: #f0fff4; }
+    .file-link.copied .cp { opacity: 1; }
 
-    /* Edits popover */
-    #edits-popover {
+    /* Mode toggle (Code / Split / Preview) */
+    .mode-toggle {
+      display: inline-flex; background: #f5f6f8; border-radius: 7px; padding: 2px;
+      border: 1px solid #e4e6eb;
+    }
+    .mode-btn {
+      display: inline-flex; align-items: center; gap: 5px;
+      padding: 4px 10px; border-radius: 5px; border: none; cursor: pointer;
+      background: transparent; color: #5a5a6c;
+      font-family: var(--sans); font-size: 11.5px; font-weight: 500;
+      transition: background .12s;
+    }
+    .mode-btn:hover { color: #17171f; }
+    .mode-btn.active {
+      background: #fff; color: #17171f; font-weight: 600;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.06);
+    }
+
+    /* Lock state pill */
+    .lock-pill {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 5px 11px; border-radius: 6px;
+      font-family: var(--sans); font-size: 11.5px; font-weight: 600;
+      border: 1px solid transparent; cursor: default; background: none;
+    }
+    .lock-pill.locked {
+      background: #fffae8; border-color: #e4c05c; color: #7a5a15; cursor: pointer;
+    }
+    .lock-pill.locked:hover { background: #fff4d0; }
+    .lock-pill.locked .hint { color: #ad7a00; font-weight: 500; margin-left: 2px; }
+    .lock-pill.editor {
+      background: #f0fff4; color: #1d6b30;
+      border-color: rgba(29,107,48,0.22); border-radius: 99px;
+      font-size: 10.5px; padding: 4px 10px;
+    }
+    .lock-pill.viewing {
+      background: #f5f6f8; color: #8a8aa0;
+      border-color: #e4e6eb; border-radius: 99px;
+      font-size: 10.5px; padding: 4px 10px;
+    }
+
+    /* Roster cluster */
+    .roster-cluster {
+      display: inline-flex; align-items: center; gap: 7px;
+      padding: 3px 10px 3px 6px; border-radius: 99px;
+      border: 1px solid #e4e6eb; background: #fff;
+      cursor: pointer; font-family: var(--sans); font-size: 11px; color: #5a5a6c; font-weight: 500;
+    }
+    .roster-cluster:hover, .roster-cluster.open { background: #f5f6f8; }
+    .roster-avatars { display: flex; }
+    .roster-avatars .av { margin-left: -5px; }
+    .roster-avatars .av:first-child { margin-left: 0; }
+    .avatar {
+      width: 22px; height: 22px; border-radius: 50%;
+      display: inline-flex; align-items: center; justify-content: center;
+      font-family: var(--mono); font-size: 9.5px; font-weight: 700; color: #0a0a10;
+      flex-shrink: 0; border: 1.5px solid #fff; position: relative;
+    }
+    .avatar .typing-dot {
+      position: absolute; bottom: -1px; right: -2px; width: 7px; height: 7px; border-radius: 50%;
+      background: #22a355; border: 1.5px solid #fff;
+      animation: ld-pulse 1.2s ease-out infinite;
+    }
+
+    /* Current user chip */
+    .user-chip {
+      display: inline-flex; align-items: center; gap: 7px;
+      padding: 3px 11px 3px 3px; border-radius: 99px;
+      font-family: var(--sans); font-size: 11.5px; font-weight: 500;
+      border: 1px solid #e4e6eb; background: #fff; color: #3a3a48;
+      cursor: default;
+    }
+    .user-chip.signed-in {
+      background: #17171f; color: #fff; border-color: #17171f;
+    }
+    .user-chip .avatar { border-color: transparent; }
+
+    /* Roster popover */
+    #roster-popover {
       display: none; position: fixed;
-      width: 320px; max-height: 280px; overflow-y: auto;
-      background: #1e1e2e; border: 1px solid #313244; border-radius: 6px;
-      box-shadow: 0 4px 16px rgba(0,0,0,.4); z-index: 100;
-      font-size: 12px; padding: 6px 0;
+      width: 340px; max-height: 480px; overflow: hidden;
+      background: #fff; border: 1px solid #e4e6eb; border-radius: 8px;
+      box-shadow: 0 12px 40px rgba(0,0,0,0.12);
+      z-index: 100;
+      font-family: var(--sans); font-size: 12px; color: #3a3a48;
     }
-    #edits-popover.open { display: block; }
-    .edit-row {
-      display: flex; align-items: center; gap: 8px;
-      padding: 5px 12px; border-bottom: 1px solid #313244;
-    }
-    .edit-row:last-child { border-bottom: none; }
-    .edit-who {
-      font-weight: 600; white-space: nowrap; flex-shrink: 0;
-    }
-    .edit-preview {
-      color: #6c7086; overflow: hidden; text-overflow: ellipsis;
-      white-space: nowrap; flex: 1; min-width: 0;
-    }
-    .edit-time {
-      color: #6c7086; font-size: 10px; white-space: nowrap; flex-shrink: 0;
-    }
-
-    /* Profile badge — top right */
-    #profile {
-      display: flex; align-items: center; gap: 6px;
-      padding: 0 12px; height: 100%;
-      border-left: 1px solid #313244; flex-shrink: 0;
-      font-size: 11px; color: #cdd6f4;
-    }
-    #profile-avatar {
-      width: 20px; height: 20px; border-radius: 50%;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 10px; font-weight: 700; color: #1e1e2e;
+    #roster-popover.open { display: flex; flex-direction: column; }
+    .rp-section-label {
+      padding: 8px 12px 6px; font-size: 10px; color: #8a8aa0;
+      text-transform: uppercase; letter-spacing: 0.08em; font-family: var(--mono);
       flex-shrink: 0;
     }
-    #profile-name { font-weight: 500; }
-    #profile-access {
-      font-size: 10px; color: #f38ba8; font-weight: 500;
+    .rp-members { flex-shrink: 0; }
+    .rp-edits { overflow-y: auto; flex: 1; min-height: 0; }
+    .rp-member {
+      display: flex; align-items: center; gap: 10px; padding: 8px 12px;
+      border-top: 1px solid #f0f1f4;
     }
-    #profile-access a {
-      color: #89b4fa; text-decoration: none; cursor: pointer;
+    .rp-member .meta { flex: 1; min-width: 0; }
+    .rp-member .name { font-size: 12px; font-weight: 500; color: #17171f; }
+    .rp-member .role { font-size: 10.5px; color: #8a8aa0; }
+    .rp-member .status-typing {
+      font-size: 10px; color: #22a355; font-weight: 600;
+      display: inline-flex; align-items: center; gap: 4px;
     }
-    #profile-access a:hover { text-decoration: underline; }
-    #profile-access.editor { color: #a6e3a1; }
+    .rp-member .status-typing::before {
+      content: ''; width: 6px; height: 6px; border-radius: 50%; background: #22a355;
+      animation: ld-pulse 1.2s ease-out infinite;
+    }
+    .rp-member .status-idle {
+      font-size: 10.5px; color: #8a8aa0; font-family: var(--mono);
+    }
+    .rp-edit {
+      display: flex; align-items: flex-start; gap: 8px; padding: 7px 12px;
+      border-top: 1px solid #f0f1f4;
+    }
+    .rp-edit .bar { width: 3px; align-self: stretch; border-radius: 2px; flex-shrink: 0; }
+    .rp-edit .who { font-weight: 500; }
+    .rp-edit .body {
+      flex: 1; min-width: 0;
+    }
+    .rp-edit .preview {
+      font-size: 11.5px; color: #3a3a48;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .rp-edit .metaline { font-size: 10px; color: #8a8aa0; margin-top: 1px; }
+    .rp-footer {
+      padding: 7px 12px; border-top: 1px solid #f0f1f4;
+      font-size: 10px; color: #8a8aa0; font-family: var(--mono); background: #fafbfc;
+      flex-shrink: 0;
+    }
+    .rp-empty {
+      padding: 14px 12px; font-size: 11.5px; color: #8a8aa0;
+      border-top: 1px solid #f0f1f4; font-style: italic;
+    }
 
-    /* ── Split panes ────────────────────────────────────────── */
-    #panes { display: flex; height: calc(100vh - 32px); }
+    @keyframes ld-pulse {
+      0%   { box-shadow: 0 0 0 0 rgba(34,163,85,0.5); }
+      70%  { box-shadow: 0 0 0 5px rgba(34,163,85,0); }
+      100% { box-shadow: 0 0 0 0 rgba(34,163,85,0); }
+    }
 
-    #pane-source  { flex: 1; overflow: hidden; background: #1e1e2e; position: relative; }
-    #pane-preview { flex: 1; overflow-y: auto; }
+    /* ── Panes ──────────────────────────────────────────────── */
+    #panes {
+      display: flex; height: calc(100vh - 52px);
+      background: #fff;
+    }
+
+    #pane-source  {
+      flex: 1; overflow: hidden; background: var(--ld-bg); position: relative;
+      min-width: 0;
+    }
+    #pane-preview { flex: 1; overflow-y: auto; background: #fff; min-width: 0; }
+
+    #panes[data-mode="code"]    #pane-preview { display: none; }
+    #panes[data-mode="code"]    #divider      { display: none; }
+    #panes[data-mode="preview"] #pane-source  { display: none; }
+    #panes[data-mode="preview"] #divider      { display: none; }
 
     #divider {
-      width: 4px; background: #313244; cursor: col-resize; flex-shrink: 0;
+      width: 4px; background: #e4e6eb; cursor: col-resize; flex-shrink: 0;
     }
     #divider:hover, #divider.dragging { background: #89b4fa; }
 
     /* CodeMirror */
     #pane-source .CodeMirror {
       height: 100%; font-size: 13px;
-      font-family: 'JetBrains Mono', 'Fira Code', 'SFMono-Regular', Consolas, monospace;
-      background: #1e1e2e; color: #cdd6f4; line-height: 1.6;
+      font-family: var(--mono);
+      background: var(--ld-bg); color: var(--ld-fg); line-height: 1.6;
     }
     .CodeMirror-scroll  { padding: 8px 0; }
     .CodeMirror-lines   { padding: 0 14px; }
-    .CodeMirror-cursor  { border-left: 2px solid #89b4fa; }
-    .CodeMirror-selected { background: #313244 !important; }
+    .CodeMirror-cursor  { border-left: 2px solid var(--ld-blue); }
+    .CodeMirror-selected { background: var(--ld-border) !important; }
     .CodeMirror-activeline-background { background: #28283d !important; }
 
     /* Markdown syntax colours (minimal) */
-    .cm-header   { color: #89b4fa !important; font-weight: bold; }
-    .cm-strong   { color: #f38ba8 !important; }
-    .cm-em       { color: #fab387 !important; }
-    .cm-link     { color: #a6e3a1 !important; }
-    .cm-url      { color: #94e2d5 !important; }
-    .cm-comment  { color: #6c7086 !important; }
-    .cm-code     { color: #f9e2af !important; }
+    .cm-header   { color: var(--ld-blue)  !important; font-weight: bold; }
+    .cm-strong   { color: var(--ld-pink)  !important; }
+    .cm-em       { color: var(--ld-peach) !important; }
+    .cm-link     { color: var(--ld-green) !important; }
+    .cm-url      { color: var(--ld-teal)  !important; }
+    .cm-comment  { color: var(--ld-fg-dim) !important; }
+    .cm-code     { color: var(--ld-yellow) !important; }
 
-    /* "Someone is typing" flash on source pane border */
-    #pane-source.remote-edit { border-right: 2px solid #cba6f7; }
+    /* Remote edit flash */
+    #pane-source.remote-edit { border-right: 2px solid var(--ld-mauve); }
 
     /* ── Rendered markdown ──────────────────────────────────── */
     #preview-inner {
       max-width: 720px; margin: 0 auto;
-      padding: 2rem 2.5rem 4rem; color: #24292e;
+      padding: 48px 56px 80px; color: #24292e;
+      font-family: var(--sans); font-size: 15.5px; line-height: 1.7;
     }
-    #preview-inner h1 { font-size: 1.9em; border-bottom: 1px solid #e1e4e8; padding-bottom: .3em; margin: 0 0 1em; }
-    #preview-inner h2 { font-size: 1.4em; border-bottom: 1px solid #e1e4e8; padding-bottom: .2em; margin: 1.5em 0 .8em; }
-    #preview-inner h3 { font-size: 1.15em; margin: 1.2em 0 .6em; }
-    #preview-inner p  { line-height: 1.7; margin: 0 0 1em; }
-    #preview-inner ul, #preview-inner ol { padding-left: 2em; margin: 0 0 1em; }
-    #preview-inner li { line-height: 1.7; margin: .2em 0; }
+    #preview-inner h1 { font-size: 2em; font-weight: 700; letter-spacing: -0.02em; border-bottom: 1px solid #e1e4e8; padding-bottom: .3em; margin: 0 0 .8em; }
+    #preview-inner h2 { font-size: 1.35em; font-weight: 600; border-bottom: 1px solid #e1e4e8; padding-bottom: .2em; margin: 1.6em 0 .6em; }
+    #preview-inner h3 { font-size: 1.15em; font-weight: 600; margin: 1.2em 0 .5em; }
+    #preview-inner p  { margin: 0 0 1em; }
+    #preview-inner ul, #preview-inner ol { padding-left: 1.6em; margin: 0 0 1em; }
+    #preview-inner li { margin: .2em 0; }
     #preview-inner pre { background: #f6f8fa; border: 1px solid #e1e4e8; border-radius: 6px;
                          padding: 1rem; overflow-x: auto; margin: 0 0 1em; }
-    #preview-inner code { font-family: 'SFMono-Regular', Consolas, monospace; font-size: .88em; }
+    #preview-inner code { font-family: var(--mono); font-size: .88em; }
     #preview-inner pre code { background: none; padding: 0; border: none; }
-    #preview-inner :not(pre) > code { background: #f6f8fa; padding: .2em .4em;
+    #preview-inner :not(pre) > code { background: #f6f8fa; padding: .15em .4em;
                                        border-radius: 3px; border: 1px solid #e1e4e8; }
-    #preview-inner table { border-collapse: collapse; width: 100%; margin: 0 0 1em; }
+    #preview-inner table { border-collapse: collapse; width: 100%; margin: 0 0 1em; font-size: 14px; }
     #preview-inner th, #preview-inner td { border: 1px solid #e1e4e8; padding: .5em .75em; text-align: left; }
     #preview-inner th { background: #f6f8fa; font-weight: 600; }
-    #preview-inner tr:nth-child(even) td { background: #f6f8fa; }
-    #preview-inner blockquote { border-left: 4px solid #e1e4e8; padding: 0 1em;
-                                 color: #6a737d; margin: 0 0 1em; }
-    #preview-inner a { color: #0366d6; }
+    #preview-inner blockquote { border-left: 4px solid #e1e4e8; padding: 0 1em; color: #6a737d; margin: 0 0 1em; }
+    #preview-inner a { color: #0366d6; text-decoration: none; }
+    #preview-inner a:hover { text-decoration: underline; }
     #preview-inner hr { border: none; border-top: 1px solid #e1e4e8; margin: 1.5em 0; }
     #preview-inner svg { display: block; max-width: 100%; margin: 0 auto 1em; }
     .mermaid-error {
       background: #fff0f0; border: 1px solid #f38ba8; border-radius: 6px;
       padding: 1rem; margin: 0 0 1em; color: #c0392b;
-      font-family: 'SFMono-Regular', Consolas, monospace; font-size: .85em;
+      font-family: var(--mono); font-size: .85em;
       white-space: pre-wrap; overflow-x: auto;
     }
 
-    /* ── Landing page ─────────────────────────────────────── */
+    /* ── Landing (no-hash root) ───────────────────────────── */
     #landing {
+      display: none; min-height: 100vh; overflow-y: auto;
+      background: var(--ld-bg); color: var(--ld-fg);
+      font-family: var(--sans);
+    }
+    #landing.visible { display: block; }
+    #landing nav.top {
+      position: sticky; top: 0; z-index: 10;
+      height: 48px; padding: 0 32px; gap: 18px;
+      display: flex; align-items: center;
+      border-bottom: 1px solid var(--ld-border);
+      background: rgba(30,30,46,0.92); backdrop-filter: blur(8px);
+      font-family: var(--mono); font-size: 11.5px;
+    }
+    #landing nav.top .brand { color: var(--ld-blue); font-weight: 700; letter-spacing: -0.01em; }
+    #landing nav.top .version { color: var(--ld-fg-dim); }
+    #landing nav.top .spacer { flex: 1; }
+    #landing nav.top a.navlink, #landing nav.top a {
+      color: var(--ld-fg-dim); text-decoration: none;
+      display: inline-flex; align-items: center; gap: 5px;
+    }
+    #landing nav.top a.navlink:hover { color: var(--ld-fg); }
+    #landing nav.top button.cta {
+      font-family: var(--mono); font-size: 11.5px; color: var(--ld-fg);
+      background: var(--ld-border); border: 1px solid #3a3a4c; border-radius: 6px;
+      padding: 5px 10px; cursor: pointer;
+      display: inline-flex; align-items: center; gap: 6px;
+    }
+    #landing nav.top button.cta:hover { background: #3a3a4c; }
+    #landing .gh-star {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 4px 10px; border-radius: 6px; border: 1px solid #3a3a4c;
+      background: var(--ld-border); color: var(--ld-fg);
+    }
+    #landing .gh-star:hover { background: #3a3a4c; }
+    #landing .gh-star .count { font-weight: 600; color: var(--ld-yellow); }
+
+    #landing .hero { max-width: 980px; margin: 0 auto; padding: 88px 32px 48px; text-align: center; }
+    #landing .hero .pill {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 4px 10px; border-radius: 99px;
+      background: rgba(137,180,250,0.1); border: 1px solid rgba(137,180,250,0.2);
+      font-family: var(--mono); font-size: 10.5px; color: var(--ld-blue);
+      margin-bottom: 28px;
+    }
+    #landing .hero .pill .pill-dot {
+      width: 6px; height: 6px; border-radius: 50%; background: var(--ld-blue);
+    }
+    #landing .hero h1 {
+      font-size: clamp(40px, 7vw, 72px); font-weight: 700; letter-spacing: -0.04em;
+      line-height: 1.02; color: var(--ld-fg); margin: 0;
+    }
+    #landing .hero h1 .accent { color: var(--ld-blue); }
+    #landing .hero h1 .muted { color: var(--ld-fg-dim); }
+    #landing .hero p.sub {
+      font-size: 18px; line-height: 1.6; color: var(--ld-fg-dim);
+      max-width: 680px; margin: 28px auto 36px;
+    }
+    #landing .cmd-box {
+      background: #0d0d14; border: 1px solid #3a3a4c; border-radius: 10px;
+      padding: 16px; font-family: var(--mono); font-size: 15px; color: #cdd6f4;
+      display: inline-flex; align-items: center; gap: 12px;
+      max-width: 620px; width: 100%; text-align: left;
+    }
+    #landing .cmd-box .prompt { color: #5e5e75; }
+    #landing .cmd-box .cmd { flex: 1; overflow-x: auto; white-space: nowrap; }
+    #landing .cmd-box .w-npx { color: var(--ld-mauve); }
+    #landing .cmd-box .w-pkg { color: var(--ld-peach); }
+    #landing .cmd-box .w-sub { color: var(--ld-green); }
+    #landing .cmd-box .w-arg { color: #cdd6f4; }
+    #landing .cmd-box button {
+      background: transparent; border: 1px solid #3a3a4c;
+      color: var(--ld-fg-dim); cursor: pointer; border-radius: 4px; padding: 5px 12px;
+      font-family: var(--mono); font-size: 11px;
+      display: inline-flex; align-items: center; gap: 5px;
+    }
+    #landing .cmd-box button:hover { color: var(--ld-fg); border-color: var(--ld-fg-dim); }
+    #landing .cmd-box button.copied { color: var(--ld-green); border-color: var(--ld-green); }
+    #landing .hero .tagline {
+      margin-top: 14px; font-family: var(--mono); font-size: 11.5px; color: #5e5e75;
+    }
+    #landing .hero .cta-row {
+      display: flex; gap: 12px; justify-content: center; margin-top: 28px; flex-wrap: wrap;
+    }
+    #landing button.primary-cta {
+      font-family: var(--sans); font-size: 13px; font-weight: 600;
+      padding: 10px 18px; border-radius: 7px; cursor: pointer;
+      background: var(--ld-blue); color: #0a0a10; border: none;
+      display: inline-flex; align-items: center; gap: 7px;
+    }
+    #landing button.primary-cta:hover { background: #b4d0ff; }
+    #landing a.ghost-cta {
+      font-family: var(--sans); font-size: 13px; font-weight: 500;
+      padding: 10px 18px; border-radius: 7px; cursor: pointer;
+      background: transparent; color: #cdd6f4; text-decoration: none;
+      border: 1px solid #3a3a4c;
+      display: inline-flex; align-items: center; gap: 7px;
+    }
+    #landing a.ghost-cta:hover { background: var(--ld-bg-2); }
+
+    #landing footer {
+      border-top: 1px solid var(--ld-border); padding: 32px;
+      display: flex; align-items: center; gap: 18px;
+      font-family: var(--mono); font-size: 11px; color: #5e5e75;
+    }
+    #landing footer .brand { color: var(--ld-blue); font-weight: 700; }
+    #landing footer .spacer { flex: 1; }
+    #landing footer a { color: var(--ld-fg-dim); text-decoration: none; }
+    #landing footer a:hover { color: var(--ld-fg); }
+
+    /* Join modal (landing) */
+    #join-modal {
+      display: none; position: fixed; inset: 0; z-index: 200;
+      background: rgba(0,0,0,0.6); align-items: center; justify-content: center;
+    }
+    #join-modal.open { display: flex; }
+    #join-modal .box {
+      background: var(--ld-bg-2); border: 1px solid #3a3a4c; border-radius: 10px;
+      padding: 24px; width: 420px; max-width: 92vw;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.5); color: var(--ld-fg);
+    }
+    #join-modal h3 { font-size: 16px; font-weight: 600; margin: 0 0 6px; }
+    #join-modal p { color: var(--ld-fg-dim); font-size: 13px; margin: 0 0 14px; }
+    #join-modal input {
+      width: 100%; padding: 10px 12px; border-radius: 6px;
+      border: 1px solid #3a3a4c; background: #0d0d14; color: var(--ld-fg);
+      font-family: var(--mono); font-size: 13px; outline: none;
+    }
+    #join-modal input:focus { border-color: var(--ld-blue); }
+    #join-modal input.error { border-color: var(--ld-pink); }
+    #join-modal .hint { font-size: 11px; color: #5e5e75; margin-top: 8px; font-family: var(--mono); }
+    #join-modal .actions { margin-top: 18px; display: flex; gap: 10px; justify-content: flex-end; }
+    #join-modal button {
+      padding: 8px 14px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 500;
+      border: 1px solid #3a3a4c; background: transparent; color: #cdd6f4;
+    }
+    #join-modal button.primary { background: var(--ld-blue); color: #0a0a10; border-color: var(--ld-blue); font-weight: 600; }
+    #join-modal button.primary:hover { background: #b4d0ff; }
+    #join-modal button:hover { background: var(--ld-border); }
+
+    /* ── Not-found card ───────────────────────────────────── */
+    #notfound {
       display: none; height: 100vh;
-      background: #1e1e2e; color: #cdd6f4;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--ld-bg); color: var(--ld-fg);
+      align-items: center; justify-content: center;
     }
-    #landing-inner {
-      max-width: 520px; margin: 0 auto; padding: 12vh 2rem 4rem;
+    #notfound.visible { display: flex; }
+    #notfound .card {
+      max-width: 520px; padding: 40px;
+      background: #1e1e2a; border: 1px solid #2a2a38; border-radius: 12px;
+      font-family: var(--sans);
     }
-    #landing h1 { font-size: 2em; margin: 0 0 .3em; color: #89b4fa; }
-    #landing p { line-height: 1.7; margin: 0 0 1.2em; color: #a6adc8; }
-    #landing code {
-      background: #313244; padding: .2em .5em; border-radius: 4px;
-      font-family: 'SFMono-Regular', Consolas, monospace; font-size: .9em;
-      color: #a6e3a1;
+    #notfound h1 { font-size: 1.3em; color: var(--ld-pink); margin: 0 0 .4em; font-weight: 600; }
+    #notfound p { line-height: 1.65; margin: 0 0 1em; color: #a6adc8; font-size: 14px; }
+    #notfound code {
+      background: #313244; padding: .18em .45em; border-radius: 4px;
+      font-family: var(--mono); font-size: .9em; color: var(--ld-green);
     }
-    #landing pre {
-      background: #313244; padding: 1rem 1.2rem; border-radius: 6px;
-      overflow-x: auto; margin: 0 0 1.2em; line-height: 1.6;
+    #notfound pre {
+      background: #0d0d14; border: 1px solid #2a2a38;
+      padding: 14px; border-radius: 6px; overflow-x: auto; margin: 0 0 1em;
+      font-family: var(--mono); font-size: 13px; color: var(--ld-fg-dim); line-height: 1.55;
     }
-    #landing pre code { background: none; padding: 0; }
-    #landing .dim { color: #6c7086; }
+    #notfound pre code { background: none; padding: 0; color: var(--ld-fg); }
+    #notfound .actions { display: flex; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
+    #notfound a.btn {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 8px 14px; border-radius: 6px; font-size: 13px; font-weight: 500;
+      text-decoration: none; border: 1px solid #3a3a4c; color: #cdd6f4;
+    }
+    #notfound a.btn:hover { background: #262634; }
+    #notfound a.btn.primary { background: var(--ld-blue); color: #0a0a10; border-color: var(--ld-blue); font-weight: 600; }
+    #notfound a.btn.primary:hover { background: #b4d0ff; }
 
     /* ── Loading overlay ──────────────────────────────────── */
     #loading {
       display: none; position: absolute; inset: 0; z-index: 50;
-      background: #1e1e2e;
+      background: var(--ld-bg);
       justify-content: center; align-items: center;
       flex-direction: column; gap: 12px;
-      color: #6c7086; font-size: 13px;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      color: var(--ld-fg-dim); font-size: 13px;
+      font-family: var(--sans);
     }
     #loading.active { display: flex; }
     .spinner {
       width: 24px; height: 24px; border: 2px solid #313244;
-      border-top-color: #89b4fa; border-radius: 50%;
+      border-top-color: var(--ld-blue); border-radius: 50%;
       animation: spin .8s linear infinite;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
 
-    /* ── Error banner ─────────────────────────────────────── */
-    #landing-error {
-      display: none; background: #45273a; border: 1px solid #f38ba8;
-      border-radius: 6px; padding: .8em 1em; margin-bottom: 1.5em;
-      color: #f38ba8; font-size: .9em; line-height: 1.5;
-    }
-    #landing-error.visible { display: block; }
-
     /* ── Edit-token modal ────────────────────────────────────── */
     #token-modal {
       display: none; position: fixed; inset: 0; z-index: 200;
-      background: rgba(0,0,0,.55);
+      background: rgba(10,10,16,.55);
       justify-content: center; align-items: center;
     }
     #token-modal.open { display: flex; }
     #token-box {
-      background: #1e1e2e; border: 1px solid #313244; border-radius: 8px;
-      padding: 1.5rem; width: 340px; text-align: center;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      color: #cdd6f4;
+      background: #fff; border: 1px solid #e4e6eb; border-radius: 10px;
+      padding: 1.5rem; width: 360px; text-align: center;
+      font-family: var(--sans); color: #17171f;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.25);
     }
-    #token-box h3 { margin: 0 0 .5rem; font-size: 1.1em; }
-    #token-box p { margin: 0 0 1rem; font-size: .85em; color: #a6adc8; }
+    #token-box h3 { margin: 0 0 .4rem; font-size: 1.05em; font-weight: 600; }
+    #token-box p { margin: 0 0 1rem; font-size: .85em; color: #6a6a80; line-height: 1.5; }
     #token-input {
-      width: 100%; padding: .5rem; border: 1px solid #313244;
-      border-radius: 4px; background: #313244; color: #cdd6f4;
-      font-family: 'SFMono-Regular', Consolas, monospace; font-size: .9em;
+      width: 100%; padding: .55rem .7rem; border: 1px solid #e4e6eb;
+      border-radius: 6px; background: #fafbfc; color: #17171f;
+      font-family: var(--mono); font-size: .85em;
       text-align: center; outline: none;
     }
-    #token-input:focus { border-color: #89b4fa; }
-    #token-input.error { border-color: #f38ba8; }
+    #token-input:focus { border-color: var(--ld-blue); background: #fff; }
+    #token-input.error { border-color: var(--ld-pink); background: #fff5f7; }
     #token-submit {
-      margin-top: .8rem; padding: .45rem 1.5rem;
-      background: #89b4fa; color: #1e1e2e; border: none; border-radius: 4px;
-      font-weight: 600; cursor: pointer; font-size: .9em;
+      margin-top: .8rem; padding: .55rem 1.5rem;
+      background: #17171f; color: #fff; border: none; border-radius: 6px;
+      font-weight: 600; cursor: pointer; font-size: .88em;
     }
-    #token-submit:hover { background: #74c7ec; }
+    #token-submit:hover { background: #2a2a38; }
     #token-cancel {
       margin-top: .5rem; padding: .3rem 1rem;
-      background: none; color: #6c7086; border: none; cursor: pointer;
+      background: none; color: #8a8aa0; border: none; cursor: pointer;
       font-size: .8em;
     }
-    #token-cancel:hover { color: #cdd6f4; }
+    #token-cancel:hover { color: #17171f; }
     #token-error-msg {
-      color: #f38ba8; font-size: .8em; margin-top: .5rem;
+      color: var(--ld-pink); font-size: .8em; margin-top: .5rem;
       display: none;
     }
   </style>
@@ -274,71 +563,142 @@
 <body>
 
 <div id="landing">
-  <div id="landing-inner">
-    <div id="landing-error"></div>
-    <h1>livedown</h1>
-    <p>Share a local markdown file and collaborate live in a browser and across machines.</p>
-    <pre><code>npx @dwmkerr/livedown share ./your-file.md</code></pre>
-    <p>Your file will be live at <code>livedown.dwmkerr.partykit.dev/#...</code></p>
-    <p class="dim" style="margin-top:2em">
-      <a href="https://github.com/dwmkerr/livedown" style="color:#89b4fa;text-decoration:none">
-        <svg style="width:14px;height:14px;vertical-align:-2px;margin-right:4px" viewBox="0 0 16 16" fill="#89b4fa"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>dwmkerr/livedown</a>
+  <nav class="top">
+    <span class="brand">livedown</span>
+    <span class="version" id="nav-version"></span>
+    <span class="spacer"></span>
+    <button class="cta" id="nav-join">Join a room</button>
+    <a class="gh-star" href="https://github.com/dwmkerr/livedown" target="_blank" aria-label="Star on GitHub">
+      <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+      <span>Star</span>
+      <span class="count" id="gh-count">—</span>
+    </a>
+  </nav>
+
+  <section class="hero">
+    <div class="pill">
+      <span class="pill-dot"></span> ephemeral · signed · zero-install
+    </div>
+    <h1>
+      One file. Many humans.<br>
+      <span class="accent">Many agents.</span> <span class="muted">All live.</span>
+    </h1>
+    <p class="sub">
+      Beam a local markdown file to a URL. Teammates edit it in the browser.
+      Others join from a terminal and sync straight into their editor.
+      Your coding agents edit alongside you — same file, every machine, all at once.
     </p>
+    <div class="cmd-box">
+      <span class="prompt">$</span>
+      <span class="cmd"><span class="w-npx">npx</span> <span class="w-pkg">@dwmkerr/livedown</span> <span class="w-sub">share</span> <span class="w-arg">./file.md</span></span>
+      <button id="copy-cmd" aria-label="Copy command">
+        <svg width="12" height="12" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="8" width="10" height="10" rx="1.5"/><path d="M4 14V5a1 1 0 0 1 1-1h9"/></svg>
+        <span>copy</span>
+      </button>
+    </div>
+    <div class="tagline">no account · node 18+ · MIT</div>
+
+    <div class="cta-row">
+      <button class="primary-cta" id="hero-join">
+        <svg width="13" height="13" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10h12"/><path d="m12 5 5 5-5 5"/></svg>
+        Join a room
+      </button>
+      <a class="ghost-cta" href="https://github.com/dwmkerr/livedown" target="_blank">
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8 8 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+        View on GitHub
+      </a>
+    </div>
+  </section>
+
+  <footer>
+    <span class="brand">livedown</span>
+    <span>MIT</span>
+    <span>by dwmkerr</span>
+    <span class="spacer"></span>
+    <a href="https://github.com/dwmkerr/livedown#readme" target="_blank">docs</a>
+    <a href="https://github.com/dwmkerr/livedown" target="_blank">github</a>
+    <a href="https://www.npmjs.com/package/@dwmkerr/livedown" target="_blank">npm</a>
+  </footer>
+</div>
+
+<div id="join-modal" role="dialog" aria-modal="true">
+  <div class="box">
+    <h3>Join a room</h3>
+    <p>Paste a room ID or a full livedown URL.</p>
+    <input id="join-input" type="text" placeholder="e.g. d5dc3b/notes.md or full share URL" autocomplete="off" spellcheck="false">
+    <div class="hint" id="join-hint">Anything after <code style="color:var(--ld-green)">#</code> in a share URL counts as a room id.</div>
+    <div class="actions">
+      <button id="join-cancel">Cancel</button>
+      <button class="primary" id="join-go">Open room</button>
+    </div>
   </div>
 </div>
 
-<div id="statusbar">
-  <a class="sb-seg" href="https://github.com/dwmkerr/livedown" target="_blank" style="text-decoration:none;gap:4px">
-    <span style="font-weight:700;color:#89b4fa">livedown</span>
-    <span id="sb-version" style="color:#6c7086;font-size:10px"></span>
-  </a>
-  <div class="sb-seg">
-    <span style="opacity:.5">📄</span>
-    <span id="sb-file">—</span>
+<div id="notfound">
+  <div class="card">
+    <h1>Room not found</h1>
+    <p id="notfound-detail">No one is sharing this document right now.</p>
+    <p>To share a local file:</p>
+    <pre><code>npx @dwmkerr/livedown share ./your-file.md</code></pre>
+    <p>The CLI prints a join URL you can open or send to someone else.</p>
+    <div class="actions">
+      <a class="btn primary" id="notfound-home" href="/">← livedown</a>
+      <a class="btn" href="https://github.com/dwmkerr/livedown" target="_blank">GitHub</a>
+    </div>
   </div>
-  <div class="sb-seg" id="sb-join">
-    <span style="opacity:.5">🔗</span>
-    <a id="sb-join-url" href="#" target="_blank"></a>
-    <button id="sb-join-copy" title="Copy link">
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#cdd6f4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-      </svg>
+</div>
+
+<!-- Reader-primary header (V2, Header A) -->
+<div id="header">
+  <div class="hdr-left">
+    <a class="icon-btn" href="https://github.com/dwmkerr/livedown" target="_blank" title="View on GitHub" aria-label="View on GitHub">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+    </a>
+    <a class="brand" href="/" title="livedown">livedown</a>
+    <span class="hdr-sep"></span>
+    <div class="file-pill">
+      <span id="hdr-dot" class="dot" title="connecting…"></span>
+      <button class="file-link" id="hdr-file-btn" title="Click to copy share link" aria-label="Copy share link">
+        <span class="name" id="hdr-file">—</span>
+        <svg class="cp" width="13" height="13" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M9 13a4 4 0 0 1 0-6l2-2a4 4 0 0 1 6 6l-1 1"/><path d="M13 9a4 4 0 0 1 0 6l-2 2a4 4 0 0 1-6-6l1-1"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <div class="hdr-center">
+    <div class="mode-toggle" id="mode-toggle" role="tablist" aria-label="View mode">
+      <button class="mode-btn" data-mode="code" role="tab" title="Code only">
+        <svg width="11" height="11" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m7 7-4 3 4 3"/><path d="m13 7 4 3-4 3"/></svg>
+        Code
+      </button>
+      <button class="mode-btn active" data-mode="split" role="tab" title="Split view">
+        <svg width="11" height="11" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="4" width="15" height="12" rx="1.5"/><path d="M10 4v12"/></svg>
+        Split
+      </button>
+      <button class="mode-btn" data-mode="preview" role="tab" title="Preview only">
+        <svg width="11" height="11" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="4" width="15" height="12" rx="1.5"/><path d="M6 8h8M6 11h8M6 14h5"/></svg>
+        Preview
+      </button>
+    </div>
+  </div>
+
+  <div class="hdr-right">
+    <button id="lock-pill" class="lock-pill viewing" type="button">
+      <svg width="11" height="11" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M2 10s3-6 8-6 8 6 8 6-3 6-8 6-8-6-8-6z"/><circle cx="10" cy="10" r="2.5"/></svg>
+      <span id="lock-label">Viewing</span>
     </button>
+    <button id="roster-cluster" class="roster-cluster" type="button" title="Who's here · recent edits">
+      <span class="roster-avatars" id="roster-avatars"></span>
+      <span id="roster-count">0</span>
+    </button>
+    <div id="user-chip" class="user-chip" title="Your identity in this document">
+      <span class="avatar" id="user-avatar" style="background:#cba6f7">?</span>
+      <span id="user-name">connecting…</span>
+    </div>
   </div>
-  <div class="sb-seg" id="sb-owner-seg" style="display:none">
-    <span style="opacity:.5">👤</span>
-    <span id="sb-owner"></span>
-  </div>
-  <div class="sb-seg" id="sb-repo-seg" style="display:none">
-    <span style="opacity:.5">⎇</span>
-    <a id="sb-repo" href="#" target="_blank"></a>
-  </div>
-  <div class="sb-seg" id="sb-lastedit-seg" style="display:none">
-    <span style="opacity:.5">✏️</span>
-    <span id="sb-lastedit"></span>
-  </div>
-  <!-- spacer pushes right-side items to the edge -->
-  <div style="flex:1"></div>
-  <div class="sb-seg" id="sb-status" title="Connection status">
-    <div id="sb-dot"></div>
-    <span id="sb-label">connecting…</span>
-  </div>
-  <div class="sb-seg" id="sb-edits-seg" style="display:none" title="Recent edits — click to see history">
-    <span style="opacity:.5">📊</span>
-    <span id="sb-edits-count">0 edits</span>
-  </div>
-  <div id="profile" title="Your identity in this document">
-    <div id="profile-avatar">?</div>
-    <span id="profile-name">connecting…</span>
-    <span id="profile-access"></span>
-  </div>
-  <a class="sb-seg" href="https://github.com/dwmkerr/livedown" target="_blank" title="livedown on GitHub" style="text-decoration:none;border-right:none">
-    <svg style="width:14px;height:14px;opacity:.5" viewBox="0 0 16 16" fill="#cdd6f4"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
-  </a>
 </div>
 
-<div id="edits-popover"></div>
+<div id="roster-popover"></div>
 
 <div id="token-modal">
   <div id="token-box">
@@ -353,7 +713,7 @@
   </div>
 </div>
 
-<div id="panes">
+<div id="panes" data-mode="split">
   <div id="pane-source">
     <div id="loading" class="active">
       <div class="spinner"></div>
@@ -369,14 +729,92 @@
 
 <script>
 (function () {
-  // Fetch version from npm registry
-  fetch('https://registry.npmjs.org/@dwmkerr/livedown/latest')
-    .then(function(r) { return r.json(); })
-    .then(function(d) {
-      var el = document.getElementById('sb-version');
-      if (el && d.version) el.textContent = 'v' + d.version;
-    })
-    .catch(function() {});
+  // ── Landing (no-hash root) ─────────────────────────────────
+  // The relay hosts both the landing page and the viewer. No hash → landing;
+  // hash → viewer. Wire up the landing UI here so it works whether the page
+  // is served from the prod relay, a custom domain, or local partykit dev.
+  function showLandingPage() {
+    document.getElementById('landing').classList.add('visible');
+    document.getElementById('header').style.display = 'none';
+    document.getElementById('panes').style.display = 'none';
+    document.getElementById('notfound').classList.remove('visible');
+    document.title = 'livedown — share a local file, collaborate live';
+  }
+
+  function initLandingUI() {
+    // npm version → top-nav badge
+    fetch('https://registry.npmjs.org/@dwmkerr/livedown/latest')
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        var el = document.getElementById('nav-version');
+        if (el && d.version) el.textContent = 'v' + d.version;
+      })
+      .catch(function () {});
+
+    // GitHub star count → Star button
+    fetch('https://api.github.com/repos/dwmkerr/livedown')
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (typeof d.stargazers_count === 'number') {
+          document.getElementById('gh-count').textContent = d.stargazers_count;
+        }
+      })
+      .catch(function () {});
+
+    // Copy hero command
+    var copyBtn = document.getElementById('copy-cmd');
+    if (copyBtn) {
+      copyBtn.addEventListener('click', function () {
+        navigator.clipboard.writeText('npx @dwmkerr/livedown share ./file.md').then(function () {
+          copyBtn.classList.add('copied');
+          copyBtn.lastElementChild.textContent = 'copied';
+          setTimeout(function () {
+            copyBtn.classList.remove('copied');
+            copyBtn.lastElementChild.textContent = 'copy';
+          }, 1500);
+        });
+      });
+    }
+
+    // Join modal — same host as the landing, so just rewrite the URL hash.
+    var modal = document.getElementById('join-modal');
+    var input = document.getElementById('join-input');
+    var hint = document.getElementById('join-hint');
+    function openModal() {
+      modal.classList.add('open');
+      input.value = '';
+      input.classList.remove('error');
+      setTimeout(function () { input.focus(); }, 50);
+    }
+    function closeModal() { modal.classList.remove('open'); }
+    function parseRoom(raw) {
+      var v = (raw || '').trim();
+      if (!v) return null;
+      var hashIx = v.indexOf('#');
+      if (hashIx >= 0) return v.slice(hashIx + 1) || null;
+      return v;
+    }
+    function go() {
+      var room = parseRoom(input.value);
+      if (!room) {
+        input.classList.add('error');
+        hint.textContent = 'Empty room id.';
+        return;
+      }
+      // Landing and viewer live on the same host — just set the hash.
+      location.hash = '#' + room;
+      location.reload();
+    }
+    document.getElementById('nav-join').addEventListener('click', openModal);
+    document.getElementById('hero-join').addEventListener('click', openModal);
+    document.getElementById('join-cancel').addEventListener('click', closeModal);
+    modal.addEventListener('click', function (e) { if (e.target === modal) closeModal(); });
+    input.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') go();
+      if (e.key === 'Escape') closeModal();
+    });
+    document.getElementById('join-go').addEventListener('click', go);
+  }
 
   // ── App state machine ───────────────────────────────────────
   // States: 'loading' | 'live' | 'offline' | 'notfound'
@@ -392,168 +830,142 @@
   function setAppState(newState, errorMsg) {
     appState = newState;
     var landing = document.getElementById('landing');
-    var statusbar = document.getElementById('statusbar');
+    var notfound = document.getElementById('notfound');
+    var header = document.getElementById('header');
     var panes = document.getElementById('panes');
-    var editsPopover = document.getElementById('edits-popover');
-    var landingError = document.getElementById('landing-error');
+    var rosterPop = document.getElementById('roster-popover');
     var tokenModal = document.getElementById('token-modal');
 
+    // Any viewer state hides the landing — landing only shows on no-hash.
+    landing.classList.remove('visible');
+
     if (newState === 'notfound') {
-      landing.style.display = 'block';
-      statusbar.style.display = 'none';
+      notfound.classList.add('visible');
+      header.style.display = 'none';
       panes.style.display = 'none';
-      editsPopover.style.display = 'none';
-      // Close any open modal — it's meaningless when there's no sharer.
+      rosterPop.style.display = 'none';
       if (tokenModal) tokenModal.classList.remove('open');
       document.title = 'livedown';
       if (errorMsg) {
-        landingError.textContent = errorMsg;
-        landingError.classList.add('visible');
+        document.getElementById('notfound-detail').textContent = errorMsg;
       }
       return;
     }
 
-    // live / offline / loading — show the main UI
-    landing.style.display = 'none';
-    statusbar.style.display = '';
+    notfound.classList.remove('visible');
+    header.style.display = '';
     panes.style.display = '';
-    editsPopover.style.display = '';
-    landingError.classList.remove('visible');
 
-    if (newState === 'loading') {
-      setStatus('connecting');
-      return;
-    }
-
+    if (newState === 'loading') { setStatus('connecting'); return; }
     if (newState === 'offline') {
-      // Sharer disconnected — keep last known content visible but disable editing
       setStatus('offline');
-      if (typeof cm !== 'undefined') {
-        cm.setOption('readOnly', true);
-        cm.refresh();
-      }
+      if (typeof cm !== 'undefined') { cm.setOption('readOnly', true); cm.refresh(); }
       return;
     }
-
     if (newState === 'live') {
       hasEverBeenLive = true;
       setStatus('live');
       // Never use readOnly in live state - the beforeChange handler blocks
       // edits and shows the edit key modal for protected rooms. readOnly
       // silently swallows input so the user never sees the modal.
-      if (typeof cm !== 'undefined') {
-        cm.setOption('readOnly', false);
-        cm.refresh();
-      }
+      if (typeof cm !== 'undefined') { cm.setOption('readOnly', false); cm.refresh(); }
     }
   }
 
-  // Back-compat alias: older code called showLanding() with no hash.
-  function showLanding(errorMsg) {
-    setAppState('notfound', errorMsg);
-  }
+  function showLanding(errorMsg) { setAppState('notfound', errorMsg); }
 
-  // No hash — show landing page
+  // Viewer page expects a #<doc> hash. Bare visits belong on the landing
+  // site (livedown.dev); surface the not-found card with a link.
   if (!location.hash || location.hash === '#') {
-    showLanding();
+    initLandingUI();
+    showLandingPage();
     return;
   }
 
-  const docName  = location.hash.replace(/^#/, '');
-  document.getElementById('sb-file').textContent = docName;
+  const docName = location.hash.replace(/^#/, '');
+  document.getElementById('hdr-file').textContent = docName;
   document.title = docName + ' · livedown';
 
-  // ── Join link ──────────────────────────────────────────────
-  var joinUrl = location.origin + '/#' + docName;
-  var joinUrlEl = document.getElementById('sb-join-url');
-  var joinCopyBtn = document.getElementById('sb-join-copy');
-  joinUrlEl.href = joinUrl;
-  joinUrlEl.textContent = joinUrl;
-  joinCopyBtn.addEventListener('click', function (e) {
-    e.preventDefault();
-    e.stopPropagation();
+  // ── Copy share link (click filename) ───────────────────────
+  const joinUrl = location.origin + '/#' + docName;
+  const fileBtn = document.getElementById('hdr-file-btn');
+  const fileIcon = fileBtn.querySelector('.cp');
+  const LINK_SVG = '<path d="M9 13a4 4 0 0 1 0-6l2-2a4 4 0 0 1 6 6l-1 1"/><path d="M13 9a4 4 0 0 1 0 6l-2 2a4 4 0 0 1-6-6l1-1"/>';
+  const CHECK_SVG = '<path d="m4 10 4 4 8-8"/>';
+  fileBtn.addEventListener('click', function () {
     navigator.clipboard.writeText(joinUrl).then(function () {
-      joinCopyBtn.classList.add('copy-flash');
-      joinCopyBtn.title = 'Copied!';
+      fileBtn.classList.add('copied');
+      fileBtn.title = 'Copied share link';
+      fileIcon.innerHTML = CHECK_SVG;
       setTimeout(function () {
-        joinCopyBtn.classList.remove('copy-flash');
-        joinCopyBtn.title = 'Copy link';
+        fileBtn.classList.remove('copied');
+        fileBtn.title = 'Click to copy share link';
+        fileIcon.innerHTML = LINK_SVG;
       }, 1500);
     });
   });
 
-  // Guest colours — cycling palette
+  // ── Identity ───────────────────────────────────────────────
   const PALETTE = ['#89b4fa','#a6e3a1','#f38ba8','#fab387','#f9e2af','#cba6f7','#94e2d5','#eba0ac'];
-  let myGuestId   = null;
+  let myGuestId = null;
   let myGuestName = null;
-  let myColor     = null;
-  let editKey = null;      // private key seed (hex) — entered by user
-  let secretKey = null;    // full 64-byte nacl secret key
-  let roomPublicKey = null; // public key from relay (hex)
+  let myColor = null;
+  let editKey = null;
+  let secretKey = null;
+  let roomPublicKey = null;
   let isProtected = false;
   let editUnlocked = false;
 
-  // Hex conversion helpers for tweetnacl
   function hexToBytes(hex) {
     var bytes = new Uint8Array(hex.length / 2);
-    for (var i = 0; i < hex.length; i += 2) {
-      bytes[i / 2] = parseInt(hex.substring(i, i + 2), 16);
-    }
+    for (var i = 0; i < hex.length; i += 2) bytes[i / 2] = parseInt(hex.substring(i, i + 2), 16);
     return bytes;
   }
   function bytesToHex(bytes) {
-    return Array.from(bytes).map(function(b) {
-      return b.toString(16).padStart(2, '0');
-    }).join('');
+    return Array.from(bytes).map(function(b) { return b.toString(16).padStart(2, '0'); }).join('');
   }
   function signContent(content, sk) {
     var msg = new TextEncoder().encode(content);
     var sig = nacl.sign.detached(msg, sk);
     return bytesToHex(sig);
   }
-  function verifyContent(content, sigHex, pubHex) {
-    try {
-      var msg = new TextEncoder().encode(content);
-      var sig = hexToBytes(sigHex);
-      var pub = hexToBytes(pubHex);
-      return nacl.sign.detached.verify(msg, sig, pub);
-    } catch (e) { return false; }
-  }
 
+  function colorFor(guestId) { return PALETTE[(guestId - 1) % PALETTE.length]; }
 
   function setProfile(guestId) {
-    myGuestId   = guestId;
+    myGuestId = guestId;
+    // Avatar is the compact "G{n}" monogram; chip label spells out "Guest {n}".
     myGuestName = 'Guest ' + guestId;
-    myColor     = PALETTE[(guestId - 1) % PALETTE.length];
-    const av    = document.getElementById('profile-avatar');
-    const nm    = document.getElementById('profile-name');
-    av.textContent  = 'G' + guestId;
+    myColor = colorFor(guestId);
+    const av = document.getElementById('user-avatar');
+    const nm = document.getElementById('user-name');
+    av.textContent = 'G' + guestId;
     av.style.background = myColor;
-    nm.textContent  = myGuestName;
+    nm.textContent = myGuestName;
   }
 
-  function updateProfileAccess() {
-    var el = document.getElementById('profile-access');
+  function updateLockPill() {
+    const pill = document.getElementById('lock-pill');
+    const label = document.getElementById('lock-label');
+    pill.className = 'lock-pill';
     if (!isProtected) {
-      el.textContent = '';
-      el.className = '';
-      el.removeAttribute('title');
+      pill.classList.add('viewing');
+      label.textContent = 'Viewing';
+      pill.title = 'This document is unprotected — anyone can edit.';
+      pill.onclick = null;
       return;
     }
     if (editUnlocked) {
-      el.textContent = '(Editor)';
-      el.className = 'editor';
-      el.onclick = null;
-      el.title = 'You have entered the edit key \u2014 changes you make are signed and broadcast to all viewers.';
-      el.innerHTML = '<span style="color:#a6e3a1">(Editor)</span>';
-    } else {
-      el.title = 'This document is protected. Enter the edit key to make changes.';
-      el.innerHTML = '(Read Only \u2014 <a id="profile-unlock">Enter Edit Key</a>)';
-      document.getElementById('profile-unlock').addEventListener('click', function (e) {
-        e.preventDefault();
-        showTokenModal();
-      });
+      pill.classList.add('editor');
+      pill.innerHTML = '<svg width="10" height="10" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="9" width="12" height="9" rx="1.5"/><path d="M7 9V6a3 3 0 0 1 5.2-2"/></svg>Editor';
+      pill.title = 'You have entered the edit key — changes you make are signed and broadcast to all viewers.';
+      pill.onclick = null;
+      return;
     }
+    pill.classList.add('locked');
+    pill.innerHTML = '<svg width="11" height="11" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="9" width="12" height="9" rx="1.5"/><path d="M7 9V6a3 3 0 0 1 6 0v3"/></svg>Locked<span class="hint">· enter key</span>';
+    pill.title = 'This document is protected. Click to enter the edit key.';
+    pill.onclick = function () { showTokenModal(); };
   }
 
   // ── CodeMirror ───────────────────────────────────────────────
@@ -566,9 +978,8 @@
     extraKeys: { Tab: false },
   });
 
-  // Track whether local user is actively editing
   let lastLocalEdit = 0;
-  let pushTimer     = null;
+  let pushTimer = null;
 
   cm.on('beforeChange', (instance, changeObj) => {
     if (changeObj.origin === 'setValue') return;
@@ -585,14 +996,12 @@
     pushTimer = setTimeout(() => push(cm.getValue()), 400);
   });
 
-  // ── Status bar ───────────────────────────────────────────────
-  const dot   = document.getElementById('sb-dot');
-  const label = document.getElementById('sb-label');
+  // ── Connection dot ───────────────────────────────────────────
+  const hdrDot = document.getElementById('hdr-dot');
 
   function setStatus(state) {
-    // states: 'live', 'offline' (sharer gone), 'disconnected' (ws lost), 'connecting'
-    dot.className = state === 'live' ? 'live' : state === 'connecting' ? '' : 'offline';
-    label.textContent =
+    hdrDot.className = 'dot ' + (state === 'live' ? 'live' : state === 'connecting' ? '' : 'offline');
+    hdrDot.title =
       state === 'live' ? 'live'
       : state === 'offline' ? 'sharer offline'
       : state === 'disconnected' ? 'disconnected'
@@ -601,66 +1010,171 @@
 
   function setMeta(meta) {
     if (!meta) return;
-    const owner = meta.owner || '';
-    const repo  = meta.github_repo || '';
     const title = meta.title || docName;
-
-    document.getElementById('sb-file').textContent = meta.file || docName;
+    document.getElementById('hdr-file').textContent = meta.file || docName;
     document.title = title + ' · livedown';
-
-    const ownerSeg = document.getElementById('sb-owner-seg');
-    document.getElementById('sb-owner').textContent = owner;
-    ownerSeg.style.display = owner ? '' : 'none';
-
-    const repoSeg = document.getElementById('sb-repo-seg');
-    const repoEl  = document.getElementById('sb-repo');
-    repoEl.textContent = repo.replace('https://github.com/', 'github: ');
-    repoEl.href = repo;
-    repoSeg.style.display = repo ? '' : 'none';
   }
 
-  function setLastEdit(editor, ts) {
-    if (!editor) return;
-    const seg  = document.getElementById('sb-lastedit-seg');
-    const time = ts ? new Date(ts).toLocaleTimeString() : '';
-    document.getElementById('sb-lastedit').textContent = editor + (time ? '  ' + time : '');
-    seg.style.display = '';
+  // ── Roster + edit history ───────────────────────────────────
+  // Relay does not broadcast presence; derive known participants from
+  // messages we've seen. Self is always present.
+  const members = new Map();     // name → { name, color, role, lastSeen, typing }
+  const editHistory = [];        // { id, who, color, preview, time }
+  let editSeq = 0;
+
+  function guestIdOf(name) {
+    const m = /^Guest (\d+)$/.exec(name || '');
+    return m ? parseInt(m[1], 10) : null;
+  }
+  function initialsOf(name) {
+    const gid = guestIdOf(name);
+    if (gid != null) return 'G' + gid;
+    return (name || '?').slice(0, 2).toUpperCase();
   }
 
-  // ── Edit history ────────────────────────────────────────────
-  const editHistory = [];  // { editor, time, preview }
-  const editsSeg     = document.getElementById('sb-edits-seg');
-  const editsCount   = document.getElementById('sb-edits-count');
-  const editsPopover = document.getElementById('edits-popover');
+  function upsertMember(name, role) {
+    if (!name) return null;
+    let m = members.get(name);
+    if (!m) {
+      const gid = guestIdOf(name);
+      const color = gid != null
+        ? colorFor(gid)
+        : PALETTE[(members.size + 1) % PALETTE.length];
+      m = { name, color, role: role || 'viewer', lastSeen: Date.now(), typing: false };
+      members.set(name, m);
+    }
+    if (role) m.role = role;
+    m.lastSeen = Date.now();
+    return m;
+  }
+
+  function markTyping(name) {
+    const m = members.get(name);
+    if (!m) return;
+    m.typing = true;
+    clearTimeout(m._typingTimer);
+    m._typingTimer = setTimeout(() => { m.typing = false; renderRoster(); }, 1400);
+    renderRoster();
+  }
 
   function recordEdit(editor, ts, content) {
     if (!editor) return;
+    upsertMember(editor, editor === myGuestName ? 'self' : 'editor');
     const preview = (content || '').replace(/\n/g, ' ').trim().slice(0, 80);
-    editHistory.unshift({ editor, time: ts, preview });
+    const color = members.get(editor)?.color || '#cba6f7';
+    editHistory.unshift({ id: ++editSeq, who: editor, color, preview, time: ts || Date.now() });
     if (editHistory.length > 50) editHistory.pop();
-
-    const n = editHistory.length;
-    editsCount.textContent = n + (n === 1 ? ' edit' : ' edits');
-    editsSeg.style.display = '';
-    renderPopover();
+    markTyping(editor);
+    renderRoster();
   }
 
-  function renderPopover() {
-    editsPopover.innerHTML = editHistory.map(function (e) {
-      var t = e.time ? new Date(e.time).toLocaleTimeString() : '';
-      return '<div class="edit-row">'
-        + '<span class="edit-who" style="color:' + (PALETTE[(editHistory.indexOf(e)) % PALETTE.length]) + '">' + escHtml(e.editor) + '</span>'
-        + '<span class="edit-preview">' + escHtml(e.preview) + '</span>'
-        + '<span class="edit-time">' + t + '</span>'
-        + '</div>';
+  function relTime(ts) {
+    if (!ts) return '';
+    const t = typeof ts === 'string' ? Date.parse(ts) : ts;
+    const s = Math.max(0, Math.round((Date.now() - t) / 1000));
+    if (s < 5)   return 'now';
+    if (s < 60)  return s + 's';
+    if (s < 3600) return Math.round(s / 60) + 'm';
+    return Math.round(s / 3600) + 'h';
+  }
+
+  const rosterBtn    = document.getElementById('roster-cluster');
+  const rosterAvs    = document.getElementById('roster-avatars');
+  const rosterCount  = document.getElementById('roster-count');
+  const rosterPop    = document.getElementById('roster-popover');
+
+  function renderRoster() {
+    const list = Array.from(members.values());
+    rosterCount.textContent = String(list.length);
+    rosterAvs.innerHTML = list.slice(0, 3).map(function (m, i) {
+      const typing = m.typing && m.name !== myGuestName
+        ? '<span class="typing-dot"></span>' : '';
+      return '<span class="avatar av" style="background:' + m.color + ';margin-left:' + (i === 0 ? 0 : -5) + 'px">'
+        + escHtml(initialsOf(m.name)) + typing + '</span>';
     }).join('');
+    if (rosterPop.classList.contains('open')) renderRosterPopover();
+  }
+
+  function renderRosterPopover() {
+    const list = Array.from(members.values());
+    const membersHtml = list.length === 0
+      ? '<div class="rp-empty">just you so far</div>'
+      : list.map(function (m) {
+          const role = m.name === myGuestName ? 'you' : (m.role === 'sharer' ? 'sharer · local file' : m.role === 'editor' ? 'editor · has key' : 'viewer');
+          const status = m.typing
+            ? '<span class="status-typing">typing…</span>'
+            : '<span class="status-idle">' + relTime(m.lastSeen) + '</span>';
+          return '<div class="rp-member">'
+            + '<span class="avatar" style="background:' + m.color + '">' + escHtml(initialsOf(m.name)) + '</span>'
+            + '<div class="meta">'
+              + '<div class="name">' + escHtml(m.name) + '</div>'
+              + '<div class="role">' + role + '</div>'
+            + '</div>'
+            + status
+          + '</div>';
+        }).join('');
+
+    const editsHtml = editHistory.length === 0
+      ? '<div class="rp-empty">no edits yet</div>'
+      : editHistory.slice(0, 8).map(function (e) {
+          return '<div class="rp-edit">'
+            + '<span class="bar" style="background:' + e.color + '"></span>'
+            + '<div class="body">'
+              + '<div class="preview">' + escHtml(e.preview || '(empty)') + '</div>'
+              + '<div class="metaline"><span class="who" style="color:' + e.color + '">' + escHtml(e.who) + '</span> · ' + relTime(e.time) + '</div>'
+            + '</div>'
+          + '</div>';
+        }).join('');
+
+    rosterPop.innerHTML =
+      '<div class="rp-section-label">In this room · ' + list.length + '</div>'
+      + '<div class="rp-members">' + membersHtml + '</div>'
+      + '<div class="rp-section-label">Recent edits</div>'
+      + '<div class="rp-edits">' + editsHtml + '</div>'
+      + (isProtected ? '<div class="rp-footer">all changes ed25519-verified</div>' : '');
   }
 
   function escHtml(s) {
     var d = document.createElement('div');
-    d.textContent = s;
+    d.textContent = s == null ? '' : String(s);
     return d.innerHTML;
   }
+
+  rosterBtn.addEventListener('click', function (e) {
+    e.stopPropagation();
+    const open = rosterPop.classList.toggle('open');
+    rosterBtn.classList.toggle('open', open);
+    if (open) {
+      renderRosterPopover();
+      const r = rosterBtn.getBoundingClientRect();
+      rosterPop.style.top = (r.bottom + 6) + 'px';
+      rosterPop.style.right = (window.innerWidth - r.right) + 'px';
+    }
+  });
+  document.addEventListener('click', function () {
+    rosterPop.classList.remove('open');
+    rosterBtn.classList.remove('open');
+  });
+  rosterPop.addEventListener('click', function (e) { e.stopPropagation(); });
+
+  // ── Mode toggle (Code / Split / Preview) ─────────────────────
+  const panes = document.getElementById('panes');
+  const modeToggle = document.getElementById('mode-toggle');
+  const STORED_MODE = 'livedown:mode';
+  const initialMode = localStorage.getItem(STORED_MODE) || 'split';
+  function applyMode(mode) {
+    panes.dataset.mode = mode;
+    modeToggle.querySelectorAll('.mode-btn').forEach(function (b) {
+      b.classList.toggle('active', b.dataset.mode === mode);
+    });
+    localStorage.setItem(STORED_MODE, mode);
+    if (cm) setTimeout(() => cm.refresh(), 0);
+  }
+  applyMode(initialMode);
+  modeToggle.addEventListener('click', function (e) {
+    const btn = e.target.closest('.mode-btn');
+    if (btn) applyMode(btn.dataset.mode);
+  });
 
   // ── Edit token modal ─────────────────────────────────────────
   const tokenModal  = document.getElementById('token-modal');
@@ -676,10 +1190,7 @@
     tokenError.style.display = 'none';
     tokenInput.focus();
   }
-
-  function hideTokenModal() {
-    tokenModal.classList.remove('open');
-  }
+  function hideTokenModal() { tokenModal.classList.remove('open'); }
 
   tokenSubmit.addEventListener('click', function () {
     var val = tokenInput.value.trim();
@@ -688,7 +1199,6 @@
       var seed = hexToBytes(val);
       if (seed.length !== 32) throw new Error('bad length');
       var kp = nacl.sign.keyPair.fromSeed(seed);
-      // Verify it matches the room's public key
       if (roomPublicKey && bytesToHex(kp.publicKey) !== roomPublicKey) {
         tokenInput.classList.add('error');
         tokenError.style.display = 'block';
@@ -698,7 +1208,7 @@
       secretKey = kp.secretKey;
       editUnlocked = true;
       cm.setOption('readOnly', false);
-      updateProfileAccess();
+      updateLockPill();
       hideTokenModal();
     } catch (e) {
       tokenInput.classList.add('error');
@@ -709,30 +1219,13 @@
   tokenInput.addEventListener('keydown', function (e) {
     if (e.key === 'Enter') tokenSubmit.click();
   });
-
-  tokenCancel.addEventListener('click', function () {
-    hideTokenModal();
-  });
-
-  editsSeg.addEventListener('click', function (e) {
-    e.stopPropagation();
-    editsPopover.classList.toggle('open');
-    if (editsPopover.classList.contains('open')) {
-      var r = editsSeg.getBoundingClientRect();
-      editsPopover.style.top = r.bottom + 'px';
-      editsPopover.style.right = (window.innerWidth - r.right) + 'px';
-    }
-  });
-  document.addEventListener('click', function () {
-    editsPopover.classList.remove('open');
-  });
+  tokenCancel.addEventListener('click', hideTokenModal);
 
   // ── Render preview ───────────────────────────────────────────
   function renderPreview(content) {
     var inner = document.getElementById('preview-inner');
     inner.innerHTML = marked.parse(content || '');
 
-    // Post-process: replace pre>code.language-mermaid blocks with mermaid divs
     var codeBlocks = inner.querySelectorAll('pre > code.language-mermaid');
     codeBlocks.forEach(function (code) {
       var pre = code.parentElement;
@@ -744,7 +1237,6 @@
 
     if (codeBlocks.length > 0 && window.mermaid) {
       window.mermaid.run({ querySelector: '.mermaid' }).catch(function () {
-        // Render error fallback for any .mermaid divs that were not replaced by SVG
         inner.querySelectorAll('.mermaid').forEach(function (el) {
           if (!el.querySelector('svg')) {
             var src = el.textContent;
@@ -769,18 +1261,16 @@
   }
 
   // ── WebSocket ────────────────────────────────────────────────
-  const host  = location.host;
+  const host = location.host;
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const url   = `${proto}//${host}/parties/main/${encodeURIComponent(docName)}`;
+  const url = `${proto}//${host}/parties/main/${encodeURIComponent(docName)}`;
   let ws, reconnectDelay = 1000;
 
   function push(content) {
     if (!ws || ws.readyState !== 1) return;
     var signature = secretKey ? signContent(content, secretKey) : null;
     ws.send(JSON.stringify({
-      type: 'push',
-      content,
-      signature: signature,
+      type: 'push', content, signature,
       meta: {
         editor:   myGuestName,
         editedAt: new Date().toISOString(),
@@ -800,7 +1290,7 @@
   function applySharerInfo(msg) {
     isProtected = !!msg.protected;
     if (msg.publicKey) roomPublicKey = msg.publicKey;
-    updateProfileAccess();
+    updateLockPill();
   }
 
   function connect() {
@@ -809,8 +1299,6 @@
     ws.onopen = () => {
       reconnectDelay = 1000;
       document.getElementById('loading').classList.remove('active');
-      // Don't call setStatus('live') here — wait for init to tell us whether
-      // we're actually live (hasSharer:true) or in notfound (hasSharer:false).
     };
 
     ws.onmessage = (e) => {
@@ -818,37 +1306,30 @@
 
       if (msg.type === 'init') {
         setProfile(msg.guestId);
-        if (msg.content) {
-          cm.setValue(msg.content);
-          renderPreview(msg.content);
-        }
+        // Add self to the roster
+        upsertMember(myGuestName, 'self');
+        members.get(myGuestName).color = myColor;
+        renderRoster();
+
+        if (msg.content) { cm.setValue(msg.content); renderPreview(msg.content); }
         setMeta(msg.meta);
         applySharerInfo(msg);
-        setLastEdit(msg.meta?.editor, msg.meta?.editedAt);
-        if (msg.meta?.editor) recordEdit(msg.meta.editor, msg.meta.editedAt, msg.content);
-
-        // Authoritative: does the room have a sharer right now?
-        if (msg.hasSharer) {
-          setAppState('live');
-        } else if (hasEverBeenLive) {
-          // Viewer reconnected and the sharer isn't currently present, but
-          // we've seen one before — this is the 'offline' state, not 'notfound'.
-          // The sharer may come back; keep content visible, disable editing.
-          setAppState('offline');
-        } else {
-          // First init and no sharer — truly not found.
-          setAppState('notfound', notFoundMessage());
+        if (msg.meta?.editor) {
+          upsertMember(msg.meta.editor, 'sharer');
+          recordEdit(msg.meta.editor, msg.meta.editedAt, msg.content);
         }
+
+        if (msg.hasSharer) setAppState('live');
+        else if (hasEverBeenLive) setAppState('offline');
+        else setAppState('notfound', notFoundMessage());
         return;
       }
 
       if (msg.type === 'update') {
         setMeta(msg.meta);
-        setLastEdit(msg.meta?.editor, msg.meta?.editedAt);
-        recordEdit(msg.meta?.editor, msg.meta?.editedAt, msg.content);
+        if (msg.meta?.editor) recordEdit(msg.meta.editor, msg.meta.editedAt, msg.content);
         renderPreview(msg.content || '');
 
-        // Only update the editor if user hasn't typed in the last 1.5s
         if (Date.now() - lastLocalEdit > 1500) {
           cm.setValue(msg.content || '');
         } else {
@@ -858,10 +1339,8 @@
       }
 
       if (msg.type === 'auth-error') {
-        editUnlocked = false;
-        editKey = null;
-        secretKey = null;
-        updateProfileAccess();
+        editUnlocked = false; editKey = null; secretKey = null;
+        updateLockPill();
         showTokenModal();
         tokenInput.classList.add('error');
         tokenError.style.display = 'block';
@@ -870,22 +1349,17 @@
 
       if (msg.type === 'sharer-here') {
         applySharerInfo(msg);
-        // Transition: notfound/offline → live
         setAppState('live');
         return;
       }
 
       if (msg.type === 'sharer-gone') {
-        // Don't kick the viewer to the landing page — the sharer might reconnect.
-        // Keep content visible but disable editing.
         setAppState('offline');
         return;
       }
     };
 
     ws.onclose = () => {
-      // Viewer's own WebSocket lost — this is different from the sharer going
-      // offline. Show "disconnected" until reconnect succeeds.
       setStatus('disconnected');
       setTimeout(connect, reconnectDelay);
       reconnectDelay = Math.min(reconnectDelay * 2, 10000);
@@ -893,6 +1367,11 @@
   }
 
   connect();
+
+  // Periodic refresh of relative times in popover
+  setInterval(function () {
+    if (rosterPop.classList.contains('open')) renderRosterPopover();
+  }, 5000);
 
   // ── Draggable divider ────────────────────────────────────────
   const divider     = document.getElementById('divider');
@@ -902,15 +1381,15 @@
 
   divider.addEventListener('mousedown', (e) => {
     dragging = true; startX = e.clientX;
-    startW   = paneSource.offsetWidth;
+    startW = paneSource.offsetWidth;
     divider.classList.add('dragging');
     document.body.style.userSelect = 'none';
   });
   document.addEventListener('mousemove', (e) => {
     if (!dragging) return;
     const total = paneSource.offsetWidth + panePreview.offsetWidth + 4;
-    const newW  = Math.max(200, Math.min(total - 200, startW + (e.clientX - startX)));
-    paneSource.style.flex  = 'none';
+    const newW = Math.max(200, Math.min(total - 200, startW + (e.clientX - startX)));
+    paneSource.style.flex = 'none';
     paneSource.style.width = newW + 'px';
     panePreview.style.flex = '1';
     cm.refresh();

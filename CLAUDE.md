@@ -8,6 +8,18 @@ Livedown shares local markdown files live via WebSocket. Security is critical �
 
 **Primary source of truth: [`docs/architecture.md`](docs/architecture.md).** It documents the overview diagram, journey flows, browser state machine, message types, and security model.
 
+## Design
+
+**Viewer chrome and landing page follow [`docs/design.md`](docs/design.md).** Any change to the header layout, mode toggle, roster/lock affordances, or landing page must update `docs/design.md` in the same PR. Code that drifts from the design doc is a bug.
+
+**Round-trip visual changes back to Claude Design.** The committed bundle under `./design/` (and the canvas it was exported from on claude.ai/design) is the source of truth for visual intent. Any change to:
+
+- CLI terminal output (banners, status lines, prompts, color scheme, keybind hints, anything `livedown share` prints)
+- Browser viewer styles (header, panes, modals, popovers, color tokens, typography)
+- Landing page styles (`public/index.html` landing block or `site/index.html`)
+
+must also be reflected in the Claude Design canvas before the PR is considered done. Update the prototypes there, re-export the bundle, and drop a new `design/design-bundle-N.zip` (incrementing N) — older snapshots stay available (per `docs/design.md` "Source of truth"). The doc, the canvas, and the shipped code stay in lockstep — divergence here is what invented the design-vs-implementation drift problem these rules exist to stop.
+
 **This documentation MUST be kept up to date.** Any PR that changes any of the following MUST update `docs/architecture.md` in the same PR:
 
 - Protocol or message types (new messages, changed fields)
@@ -32,6 +44,8 @@ npm test       # jest
 npm run lint   # eslint
 npm run build  # tsc
 ```
+
+**MANDATORY before opening or updating a PR:** run `npm run lint && npm run build && npm test` (or `make test` for the full suite including integration). All three must pass. Never push or open a PR while any of them are red — CI will fail and the diff lands in a broken state. If a test is unrelated to the change but already failing on the branch, fix or quarantine it first.
 
 ### Browser end-to-end tests with Playwright
 

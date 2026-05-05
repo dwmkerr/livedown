@@ -13,6 +13,7 @@ const pkg = JSON.parse(
   fs.readFileSync(path.resolve(__dirname, "..", "package.json"), "utf8")
 );
 const DEFAULT_RELAY = "livedown.dwmkerr.partykit.dev";
+const DEV_RELAY = "localhost:1999";
 
 function shortId(): string {
   return crypto.randomBytes(3).toString("hex");
@@ -30,8 +31,20 @@ function buildRoomUrl(relay: string, doc: string): string {
 
 async function startSharing(
   file: string,
-  opts: { relay: string; editor: string; doc?: string; editKey?: string }
+  opts: {
+    relay: string;
+    editor: string;
+    doc?: string;
+    editKey?: string;
+    dev?: boolean;
+  }
 ): Promise<void> {
+  // --dev forces the local partykit dev server. Explicit -r still wins so
+  // users can point at an alternate dev host if they need to.
+  if (opts.dev && opts.relay === DEFAULT_RELAY) {
+    opts.relay = DEV_RELAY;
+  }
+
   const filePath = path.resolve(file);
   if (!fs.existsSync(filePath)) {
     console.error(`Error: file not found: ${filePath}`);
@@ -67,7 +80,15 @@ async function startSharing(
     await startWatcher(filePath, doc, roomUrl, opts.editor, editKey, publicKey);
   } catch (err) {
     if (process.stdout.isTTY) process.stdout.write("\r\x1b[2K");
-    console.error(`  \x1b[31m✗ ${(err as Error).message}\x1b[0m`);
+    const msg = (err as Error).message;
+    console.error(`  \x1b[31m✗ ${msg}\x1b[0m`);
+    // --dev targets a local partykit server that the user must start in another
+    // shell. Point them at it on any failure — connection-refused, timeout, etc.
+    if (opts.dev) {
+      console.error(
+        `  \x1b[2mIn another terminal run: \x1b[36mnpx partykit dev --port 1999\x1b[0m`
+      );
+    }
     process.exit(1);
   }
 
@@ -134,7 +155,11 @@ program
   .description(
     "Share a local markdown file and collaborate live in a browser and across machines."
   )
-  .version(pkg.version);
+  .version(pkg.version)
+  // Accept --dev at the root so either argument order works:
+  //   npm start -- --dev share ./file.md
+  //   npm start -- share --dev ./file.md
+  .option("-D, --dev", "Use the local partykit dev server (localhost:1999)");
 
 program
   .command("share")
@@ -144,7 +169,11 @@ program
   .option("-e, --editor <name>", "Your name shown to viewers", defaultEditor)
   .option("-d, --doc <name>", "Document name (defaults to filename)")
   .option("-k, --edit-key <key>", "Edit key (auto-generated if omitted)")
-  .action(startSharing);
+  .option("-D, --dev", "Use the local partykit dev server (localhost:1999)")
+  .action((file, opts) =>
+    // Merge root-level --dev so either order works.
+    startSharing(file, { ...opts, dev: opts.dev || !!program.opts().dev })
+  );
 
 function fileCompleter(line: string): [string[], string] {
   // Determine the directory to list and the prefix to filter by.
@@ -211,14 +240,25 @@ function promptForFile(): Promise<string> {
   });
 }
 
-// No subcommand — prompt for file path
-if (process.argv.length === 2) {
+// No subcommand — prompt for file path. Bare flags (e.g. `--dev`) without a
+// subcommand still drop into the prompt, but `--help` / `--version` must
+// reach commander so users (and the CLI tests) get usage and version output.
+const argv = process.argv.slice(2);
+const knownSubcommands = new Set(["share", "help"]);
+const hasSubcommand = argv.some((a) => knownSubcommands.has(a));
+const isHelpOrVersion = argv.some((a) =>
+  ["-h", "--help", "-V", "--version"].includes(a)
+);
+
+if (!hasSubcommand && !isHelpOrVersion) {
+  const dev = argv.includes("-D") || argv.includes("--dev");
   (async () => {
     try {
       const file = await promptForFile();
       await startSharing(file, {
         relay: defaultRelay,
         editor: defaultEditor,
+        dev,
       });
     } catch (err) {
       console.error(`Error: ${(err as Error).message}`);
