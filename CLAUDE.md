@@ -12,6 +12,14 @@ Livedown shares local markdown files live via WebSocket. Security is critical â€
 
 **Viewer chrome and landing page follow [`docs/design.md`](docs/design.md).** Any change to the header layout, mode toggle, roster/lock affordances, or landing page must update `docs/design.md` in the same PR. Code that drifts from the design doc is a bug.
 
+**Round-trip visual changes back to Claude Design.** The committed bundle under `./design/` (and the canvas it was exported from on claude.ai/design) is the source of truth for visual intent. Any change to:
+
+- CLI terminal output (banners, status lines, prompts, color scheme, keybind hints, anything `livedown share` prints)
+- Browser viewer styles (header, panes, modals, popovers, color tokens, typography)
+- Landing page styles (`public/index.html` landing block or `site/index.html`)
+
+must also be reflected in the Claude Design canvas before the PR is considered done. Update the prototypes there, re-export the bundle, and replace `./design/` wholesale (per `docs/design.md` "Source of truth"). The doc, the prototypes, and the shipped code stay in lockstep â€” divergence here is what invented the design-vs-implementation drift problem these rules exist to stop.
+
 **This documentation MUST be kept up to date.** Any PR that changes any of the following MUST update `docs/architecture.md` in the same PR:
 
 - Protocol or message types (new messages, changed fields)
