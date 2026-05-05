@@ -1,0 +1,4 @@
+# Design bundle: Claude Design export with HTML/JSX prototypes. Static design
+# artifacts only — never bundled into production code, never deployed. Ignore
+# scanner findings inside this tree.
+design/**/*
