@@ -153,3 +153,7 @@ This repo uses **OpenSpec Flow** — a GitHub Actions workflow that drives a Cla
 ## License
 
 MIT
+
+---
+
+<sub>UI prototyped on [Claude Design](https://claude.ai/design/p/68395513-244f-402c-b6ee-77499c42f583?file=Livedown+Designs.html). See [`design/`](design/) for artifacts, [`docs/design.md`](docs/design.md) for the implementation contract.</sub>

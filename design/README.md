@@ -4,7 +4,7 @@ Static design artifacts for the livedown viewer, landing page, and CLI surface.
 
 The source of truth lives on **Claude Design** — edit there, re-export, replace this folder wholesale. Do not edit prototypes in place; they will be overwritten.
 
-- **Canvas** — _replace this with the canvas URL on claude.ai/design once known_
+- **Canvas** — https://claude.ai/design/p/68395513-244f-402c-b6ee-77499c42f583?file=Livedown+Designs.html
 - **Bundle re-export** — Claude Design → Export → save the resulting `livedown/` directory over `./design/`
 
 ## Contents
