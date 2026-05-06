@@ -16,7 +16,7 @@ install: # Install deps, build, and link the `livedown` CLI globally.
 
 .PHONY: dev
 dev: # Run the partykit dev server on localhost:1999 (serves landing + viewer; pair with `make start -- --dev share ./file.md`).
-	npx partykit dev --port 1999
+	npm run relay:dev
 
 .PHONY: start
 start: # Run the livedown CLI. Format `make start -- <cli args>`, e.g. `make start -- --dev share ./README.md`. ARGS=… also works.

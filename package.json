@@ -11,6 +11,7 @@
     "build": "tsc && chmod +x dist/cli.js",
     "build:watch": "tsc -w",
     "dev": "tsx watch src/cli.ts",
+    "relay:dev": "partykit dev --port 1999",
     "start": "ts-node ./src/cli.ts",
     "lint": "eslint .",
     "lint:fix": "eslint --fix .",
