@@ -4,6 +4,7 @@ import chokidar from "chokidar";
 import matter from "gray-matter";
 import WebSocket from "ws";
 import { signContent, verifySignature } from "./token";
+import { dim, red } from "./style";
 
 interface Meta {
   owner: string | null;
@@ -31,7 +32,7 @@ function parseMeta(
   };
 }
 
-const HINTS = "\x1b[2m  o open  c copy key  q quit\x1b[0m";
+const HINTS = dim("  o open  c copy key  q quit");
 let showHints = false;
 
 function log(msg: string): void {
@@ -122,7 +123,7 @@ export function startWatcher(
         }
         if (msg.type === "auth-rejected") {
           const who = msg.editor || "unknown";
-          log(`  \x1b[31m✗ ${who} — edit rejected (bad signature)\x1b[0m`);
+          log(`  ${red(`✗ ${who} — edit rejected (bad signature)`)}`);
           return;
         }
         if (msg.type !== "update") return;
@@ -130,7 +131,7 @@ export function startWatcher(
         // Verify signature before writing to disk
         if (msg.signature && publicKey) {
           if (!verifySignature(msg.content || "", msg.signature, publicKey)) {
-            log("  \x1b[31m✗ Rejected update — invalid signature\x1b[0m");
+            log(`  ${red("✗ Rejected update — invalid signature")}`);
             return;
           }
         }
@@ -159,11 +160,7 @@ export function startWatcher(
             .replace(/\n/g, " ")
             .trim()
             .slice(0, 60);
-          const dim = "\x1b[2m";
-          const reset = "\x1b[0m";
-          log(
-            `  ${dim}${who}${reset}  ${preview}${preview.length >= 60 ? "..." : ""}`
-          );
+          log(`  ${dim(who)}  ${preview}${preview.length >= 60 ? "..." : ""}`);
         }
       } catch {
         /* ignore malformed */

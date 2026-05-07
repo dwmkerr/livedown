@@ -8,6 +8,16 @@ import readline from "readline";
 import { Command } from "commander";
 import { startWatcher } from "./watcher";
 import { generateEditKeyPair, publicKeyFromEditKey } from "./token";
+import {
+  clearLine,
+  cyan,
+  dim,
+  green,
+  link,
+  red,
+  underline,
+  yellow,
+} from "./style";
 
 const pkg = JSON.parse(
   fs.readFileSync(path.resolve(__dirname, "..", "package.json"), "utf8")
@@ -71,7 +81,7 @@ async function startSharing(
   // watcher is ready. The URL is only printed after the relay acks the sharer
   // so the user can never share a URL before the room is fully established.
   if (process.stdout.isTTY) {
-    process.stdout.write(`  \x1b[2mConnecting...\x1b[0m`);
+    process.stdout.write(`  ${dim("Connecting...")}`);
   } else {
     console.log("  Connecting...");
   }
@@ -79,29 +89,27 @@ async function startSharing(
   try {
     await startWatcher(filePath, doc, roomUrl, opts.editor, editKey, publicKey);
   } catch (err) {
-    if (process.stdout.isTTY) process.stdout.write("\r\x1b[2K");
+    process.stdout.write(clearLine());
     const msg = (err as Error).message;
-    console.error(`  \x1b[31m✗ ${msg}\x1b[0m`);
+    console.error(`  ${red(`✗ ${msg}`)}`);
     // --dev targets a local partykit server that the user must start in another
     // shell. Point them at it on any failure — connection-refused, timeout, etc.
     if (opts.dev) {
       console.error(
-        `  \x1b[2mIn another terminal run: \x1b[36mnpx partykit dev --port 1999\x1b[0m`
+        `  ${dim(`In another terminal run: ${cyan("npx partykit dev --port 1999")}`)}`
       );
     }
     process.exit(1);
   }
 
-  if (process.stdout.isTTY) process.stdout.write("\r\x1b[2K");
+  process.stdout.write(clearLine());
   console.log(
-    `  Join      \x1b[4m\x1b]8;;${viewerUrl}\x07${viewerUrl}\x1b]8;;\x07\x1b[24m \x1b[2m(press o to open)\x1b[0m`
+    `  Join      ${underline(link(viewerUrl))} ${dim("(press o to open)")}`
   );
-  console.log(
-    `  Edit key  \x1b[33m${editKey}\x1b[0m \x1b[2m(press c to copy)\x1b[0m\n`
-  );
+  console.log(`  Edit key  ${yellow(editKey)} ${dim("(press c to copy)")}\n`);
 
   if (process.stdin.isTTY) {
-    const hints = "\x1b[2m  o open  c copy key  q quit\x1b[0m";
+    const hints = dim("  o open  c copy key  q quit");
     process.stdout.write(hints);
     process.stdin.setRawMode(true);
     process.stdin.resume();
@@ -115,12 +123,12 @@ async function startSharing(
           const { default: clipboardy } = await import("clipboardy");
           await clipboardy.write(editKey);
           process.stdout.write(
-            "\x1b[2K\r  \x1b[32m✓ Edit key copied to clipboard\x1b[0m\n"
+            `${clearLine()}  ${green("✓ Edit key copied to clipboard")}\n`
           );
           process.stdout.write(hints);
         } catch {
           process.stdout.write(
-            "\x1b[2K\r  \x1b[31m✗ Could not copy to clipboard\x1b[0m\n"
+            `${clearLine()}  ${red("✗ Could not copy to clipboard")}\n`
           );
           process.stdout.write(hints);
         }
@@ -130,12 +138,12 @@ async function startSharing(
           const open = (await import("open")).default;
           await open(viewerUrl);
           process.stdout.write(
-            "\x1b[2K\r  \x1b[32m✓ Opened in browser\x1b[0m\n"
+            `${clearLine()}  ${green("✓ Opened in browser")}\n`
           );
           process.stdout.write(hints);
         } catch {
           process.stdout.write(
-            "\x1b[2K\r  \x1b[31m✗ Could not open browser\x1b[0m\n"
+            `${clearLine()}  ${red("✗ Could not open browser")}\n`
           );
           process.stdout.write(hints);
         }
