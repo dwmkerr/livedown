@@ -228,6 +228,13 @@ function promptForFile(): Promise<string> {
       terminal: true,
       completer: fileCompleter,
     });
+    // readline in terminal mode intercepts SIGINT; without this handler
+    // Ctrl-C at the prompt is a no-op instead of exiting the CLI.
+    rl.on("SIGINT", () => {
+      rl.close();
+      process.stdout.write("\n");
+      process.exit(130);
+    });
     rl.question("File to share: ", (answer) => {
       rl.close();
       const trimmed = answer.trim();

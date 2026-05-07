@@ -2,6 +2,7 @@
   <h2 align="center"><code>📝 livedown</code></h2>
   <h3 align="center">Share a local markdown file and collaborate live in a browser and across machines.</h3>
   <p align="center">
+    <a href="https://livedown.dwmkerr.partykit.dev">Site</a> |
     <a href="#quickstart">Quickstart</a> |
     <a href="#commands">Commands</a> |
     <a href="#developer-guide">Developer Guide</a> |
@@ -12,7 +13,7 @@
 
   <p align="center">
     <a href="https://github.com/dwmkerr/livedown/actions/workflows/cicd.yaml"><img src="https://github.com/dwmkerr/livedown/actions/workflows/cicd.yaml/badge.svg" alt="cicd"></a>
-    <a href="https://github.com/dwmkerr/livedown/actions/workflows/deploy.yaml"><img src="https://github.com/dwmkerr/livedown/actions/workflows/deploy.yaml/badge.svg" alt="deploy"></a>
+    <a href="https://github.com/dwmkerr/livedown/actions/workflows/deploy.yaml"><img src="https://github.com/dwmkerr/livedown/actions/workflows/deploy.yaml/badge.svg?event=workflow_dispatch" alt="deploy"></a>
     <a href="https://www.npmjs.com/package/@dwmkerr/livedown"><img src="https://img.shields.io/npm/v/%40dwmkerr/livedown" alt="npm version"></a>
     <a href="https://codecov.io/gh/dwmkerr/livedown"><img src="https://codecov.io/gh/dwmkerr/livedown/graph/badge.svg" alt="codecov"></a>
   </p>
@@ -55,35 +56,22 @@ Options:
 
 ## Developer Guide
 
+Run the full stack locally — relay, viewer, and CLI all on your machine, no deployed relay required. PartyKit serves the relay *and* `public/` on `http://localhost:1999` with caching disabled, so edits to `public/index.html` show up on browser refresh.
+
 ```bash
-# Clone the repo.
+# Clone, install, build, link.
 git clone git@github.com:dwmkerr/livedown.git
 cd livedown
+npm install && npm run build && npm link
 
-# Install dependencies, build and link.
-npm install
-npm run build
-npm link
+# Terminal 1 — relay + viewer on localhost:1999.
+npm run relay:dev
 
-# Share a file, or use dev mode:
-livedown share ./README.md
-npm start -- share ./README.md
-```
+# Terminal 2 — rebuild dist/ on save so `livedown` always runs latest source.
+npm run build:watch
 
-### Run the full stack locally
-
-For rapid iteration on the browser viewer (`public/index.html`) or the relay, run everything on your machine — no deployed relay required.
-
-```bash
-npx partykit dev
-```
-
-PartyKit serves the relay *and* `public/` on `http://localhost:1999` with caching disabled, so edits to `public/index.html` show up on browser refresh.
-
-In another terminal, share a file against the local relay:
-
-```bash
-PARTYKIT_HOST=localhost:1999 npm start share ./README.md
+# Terminal 3 — share a file against the local relay.
+PARTYKIT_HOST=localhost:1999 livedown --dev share ./README.md
 ```
 
 The CLI prints a `http://localhost:1999/#…` URL. Open it and iterate.
