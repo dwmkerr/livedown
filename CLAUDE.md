@@ -99,13 +99,7 @@ Rules for any change under `.github/workflows/` or `.github/actions/`. These are
 
 ## OpenSpec Flow
 
-Rules that apply when you are the agent running from `.github/workflows/openspec-flow.yaml` (plan, implement, respond, cleanup). Mandatory.
-
-1. **Session log path in CI is `/home/runner/work/_temp/claude-execution-output.json`.** Parse with `jq`. Do not use `~/.claude/projects/-<cwd>/*.jsonl` — developer-local only, empty in CI.
-
-2. **Archive must sync delta specs.** When archiving a change that adds a `specs/<cap>/spec.md`, also create or update `openspec/specs/<cap>/spec.md` in the same impl PR.
-
-3. **External repo references must be grounded.** Clone any referenced repo (`dwmkerr/...`, `anthropics/...`, etc.) to `/tmp` during EXPLORE. Read actual entry points before speccing or implementing against them. Do not assume interfaces from names.
+OpenSpec Flow runs from the external [`dwmkerr/openspec-flow`](https://github.com/dwmkerr/openspec-flow) reusable workflow. Upstream owns the plan/implement/respond/cleanup pipeline, the composite actions, and the agent prompt. Spec authoring and change-folder conventions still live in `openspec/` here. Refer to the upstream repo for workflow internals, label semantics, and required secrets.
 
 ## Deployment
 
@@ -130,42 +124,11 @@ All set under repo Settings → Secrets and variables → Actions:
 - `NPM_TOKEN` — npm "Automation" / granular token with `package: write` on the `@dwmkerr` scope. Generate at npmjs.com → Access Tokens. Used by `deploy-npm` job in `deploy.yaml`.
 - `PARTYKIT_TOKEN` — generate with `npx partykit token generate` on a machine logged in as the relay owner (`dwmkerr`). Used by `deploy-partykit` job in `deploy.yaml`. Rotate by regenerating and pasting the new value into Actions secrets.
 - `CODECOV_TOKEN` — upload coverage from `validate` job.
-- `ANTHROPIC_API_KEY` — used by Claude-driven workflows (agent-actions, openspec-flow, security-review). Exactly one of `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN` should be set — **the Claude Agent SDK uses the API key when both are present** (same precedence as the local `claude` CLI). To route OAuth / subscription auth, delete the API key secret first.
+- `ANTHROPIC_API_KEY` — used by Claude-driven workflows (agent-actions, security-review, plus the external openspec-flow shim). Exactly one of `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN` should be set — **the Claude Agent SDK uses the API key when both are present** (same precedence as the local `claude` CLI). To route OAuth / subscription auth, delete the API key secret first.
 - `CLAUDE_CODE_OAUTH_TOKEN` — alternative to `ANTHROPIC_API_KEY`: runs Claude Code against your Pro/Max subscription instead of API billing. Generate with `claude setup-token` locally. Before using in CI, read Anthropic's [authentication docs](https://code.claude.com/docs/en/authentication) and the [consumer terms](https://www.anthropic.com/legal/consumer-terms) — OAuth-backed CI is sanctioned for personal use on your own repo, but Anthropic has banned accounts that fired on third-party PR events (see [claude-code-action#838](https://github.com/anthropics/claude-code-action/issues/838)). Rotation: `gh secret delete` does not revoke the token server-side; also revoke at https://claude.ai/settings/claude-code.
 - `AGENT_GITHUB_TOKEN` — PAT used by agent workflows that need repo write scope beyond the default `GITHUB_TOKEN`.
 
 `PARTYKIT_LOGIN` is the partykit username (currently `dwmkerr`). It is **not** a secret — it's hardcoded at the workflow `env:` level in `deploy.yaml`. Change it there if the relay account changes.
-
-## Agent workflow permissions
-
-The OpenSpec Flow agent step (in `.github/workflows/openspec-flow.yaml`) runs `anthropics/claude-code-action`, which exchanges the OIDC token for a GitHub App installation token. That token grants **only** `contents: write`, `pull_requests: write`, `issues: write` by default — **not** `workflows: write`. Any agent attempt to push `.github/workflows/*.yaml` changes will be silently dropped from the commit or rejected at push.
-
-This is observable as impl PRs that archive + update main specs but contain zero workflow edits, even when the spec target is the flow workflow itself.
-
-To grant the agent `workflows: write`, two things are required (both must be set):
-
-**1. Repo / org variable `AGENT_ADDITIONAL_PERMISSIONS`**
-
-- Non-secret, lives in Settings → Secrets and variables → Actions → **Variables** tab → New repository variable.
-- Name: `AGENT_ADDITIONAL_PERMISSIONS`
-- Value: `workflows: write`
-- Unset / empty = action default (no extra scope).
-- Forwarded to `claude-code-action` as the `additional_permissions` input via the workflow's top-level `env:` block.
-
-```bash
-gh variable set AGENT_ADDITIONAL_PERMISSIONS --body "workflows: write"  # enable
-gh variable delete AGENT_ADDITIONAL_PERMISSIONS                        # disable
-```
-
-**2. Claude GitHub App permission on the repo**
-
-- Settings → **GitHub Apps** → Claude → Configure (the repo-level link)
-- Repository permissions → **Workflows** → Read and write
-- Save.
-
-Without step 2, step 1 has no effect — the OIDC exchange can only grant scopes the app is installed with.
-
-**Default state for new projects**: leave `AGENT_ADDITIONAL_PERMISSIONS` unset. Only turn on when implement tasks legitimately need to edit `.github/workflows/*.yaml`. livedown has it on because its own flow workflow is a primary implementation target (meta: the flow can modify itself).
 
 ## Key Files
 
