@@ -32,14 +32,14 @@ function parseMeta(
   };
 }
 
-const HINTS = dim("  o open  c copy key  q quit");
+let hints = dim("  o open  c copy key  q quit");
 let showHints = false;
 
 function log(msg: string): void {
   if (showHints && process.stdout.isTTY) {
     process.stdout.write("\x1b[2K\r");
     console.log(msg);
-    process.stdout.write(HINTS);
+    process.stdout.write(hints);
   } else {
     console.log(msg);
   }
@@ -51,7 +51,8 @@ export function startWatcher(
   roomUrl: string,
   editor: string,
   editKey: string,
-  publicKey: string
+  publicKey: string,
+  viewKey?: string
 ): Promise<void> {
   let ws: WebSocket | null = null;
   let ignoreNextWrite = false;
@@ -59,6 +60,7 @@ export function startWatcher(
   let resolveReady: (() => void) | null = null;
   let rejectReady: ((err: Error) => void) | null = null;
   showHints = process.stdin.isTTY === true;
+  if (viewKey) hints = dim("  o open  v copy view key  c copy key  q quit");
 
   const ready = new Promise<void>((resolve, reject) => {
     resolveReady = resolve;
@@ -102,7 +104,13 @@ export function startWatcher(
       // sharer-ack resolves the ready promise. On subsequent reconnects we log
       // so the user knows we recovered.
       if (isReady) log("Reconnected to room");
-      ws!.send(JSON.stringify({ type: "set-token", publicKey }));
+      ws!.send(
+        JSON.stringify({
+          type: "set-token",
+          publicKey,
+          ...(viewKey ? { viewKey } : {}),
+        })
+      );
       push(fs.readFileSync(filePath, "utf8"));
     });
 

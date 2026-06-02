@@ -1,5 +1,6 @@
 import {
   generateEditKeyPair,
+  generateViewKey,
   signContent,
   verifySignature,
   publicKeyFromEditKey,
@@ -43,6 +44,16 @@ describe("signContent and verifySignature", () => {
   it("should reject a malformed signature", () => {
     const kp = generateEditKeyPair();
     expect(verifySignature("hello", "badbeef", kp.publicKey)).toBe(false);
+  });
+});
+
+describe("generateViewKey", () => {
+  it("should return a 64-character hex string", () => {
+    expect(generateViewKey()).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it("should return a distinct value on each call", () => {
+    expect(generateViewKey()).not.toBe(generateViewKey());
   });
 });
 

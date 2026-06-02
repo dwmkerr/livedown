@@ -43,6 +43,13 @@ export function publicKeyFromEditKey(editKeyHex: string): string {
   return toHex(kp.publicKey);
 }
 
+// View key for private mode. Symmetric secret, independent of the edit key;
+// the edit key is a superset that also grants view access (verified relay-side
+// by public-key derivation), so this is only needed for view-only distribution.
+export function generateViewKey(): string {
+  return toHex(nacl.randomBytes(32));
+}
+
 function toHex(bytes: Uint8Array): string {
   return Array.from(bytes)
     .map((b) => b.toString(16).padStart(2, "0"))
