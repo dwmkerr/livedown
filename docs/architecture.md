@@ -262,13 +262,15 @@ Two people share a file across machines. One is the leader, the other joins and 
 
 | Type | Fields | Purpose |
 |------|--------|---------|
-| `init` | `content`, `meta`, `guestId`, `hasSharer`, `protected`, `publicKey`, `private` | Sent to each connection on connect. In private mode, unauthenticated connections get `content: null` and `publicKey: null`. |
+| `init` | `content`, `meta`, `guestId`, `hasSharer`, `protected`, `publicKey`, `private` | Sent to each connection on connect. In private mode, unauthenticated connections get `content: null`, `publicKey: null`, and `hasSharer: false`. |
 | `update` | `content`, `meta`, `signature` | After a valid push. In private mode, sent only to view-authenticated connections. |
-| `sharer-here` | `protected`, `publicKey`, `private` | Sharer joined an empty room |
-| `sharer-gone` | - | Last sharer disconnected |
-| `auth-rejected` | `editor` | Someone's push was rejected (info for sharer) |
+| `sharer-here` | `protected`, `publicKey`, `private` | Sharer joined an empty room. In private mode, only view-authenticated connections receive it. |
+| `sharer-gone` | - | Last sharer disconnected. In private mode, only view-authenticated connections receive it. |
+| `auth-rejected` | `editor` | Someone's push was rejected (info for sharer). In private mode, only view-authenticated connections receive it. |
 
 In **private mode** (sharer ran `livedown share --private`), the relay withholds content and the edit public key from any connection until it authenticates with a `view-auth`. The view key is a 64-hex-char symmetric token, independent of the edit key, but the **edit key is a superset** — submitting it in `view-auth` also grants view access (the relay derives its public key and compares to the room's). The sharer's own connection is auto-authenticated on `set-token`.
+
+Private rooms also withhold **presence and identity** from unauthenticated connections: `init` reports `hasSharer: false`, and the `update`, `sharer-here`, `sharer-gone`, and `auth-rejected` messages are delivered only to view-authenticated connections. A URL-only visitor therefore learns nothing — not content, public key, presence, or editor names. Private mode is latched at room creation (the first `set-token`); later `set-token` messages cannot change it, so a party who learns the broadcast public key cannot flip an established room private. Failed `view-auth` attempts are capped per connection to bound brute-force / CPU-amplification.
 
 ## Security
 
@@ -295,7 +297,8 @@ By default the viewer URL grants read access — only editing is key-gated. `liv
 
 - **View key** — a 64-hex-char symmetric token, independent of the edit key. Distribute it for view-only access.
 - **Edit key is a superset** — submitting the edit key at the view gate also grants view access (the relay derives its public key and matches it against the room's), so editors need only one secret.
-- The relay withholds content and the public key until a connection authenticates; unauthenticated `update` broadcasts are suppressed.
+- The relay withholds content and the public key until a connection authenticates; unauthenticated connections also receive no presence (`hasSharer: false`) and no `update`, `sharer-here`, `sharer-gone`, or `auth-rejected` messages — a URL-only visitor learns nothing.
+- Private mode is latched at room creation and cannot be changed by later `set-token` messages, so learning the broadcast public key does not let an attacker flip an established room private. Failed `view-auth` attempts are capped per connection.
 
 Unlike write integrity (which has defense in depth — relay *and* watcher both verify), **view gating is enforced at a single point: the relay.** This does not widen the trust boundary — the relay already holds document content in plaintext, so confidentiality *from the relay* was never claimed. The view key stops one threat: a leaked URL handing content to a stranger. Achieving defense-in-depth for confidentiality would require end-to-end encryption (relay broadcasts ciphertext), which is out of scope. The view key travels only in point-to-point messages (`set-token`, `view-auth`), never in a broadcast payload.
 
