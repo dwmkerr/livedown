@@ -201,6 +201,11 @@ Two people share a file across machines. One is the leader, the other joins and 
             └─────┬──────┘
                   │ init arrives
                   │
+        private & not yet ──────────▶ ┌────────────┐   view-key modal;
+        view-authenticated            │  Private   │   content withheld
+                  │ no                 └─────┬──────┘
+                  │                          │ view-auth-ack + full init
+                  │              ◀───────────┘ (edit key also unlocks editing)
            ┌──────┴──────┐
            │             │
        hasSharer      hasSharer
@@ -225,11 +230,14 @@ Two people share a file across machines. One is the leader, the other joins and 
 | State | UI | Edits? |
 |-------|-----|--------|
 | Loading | Spinner, "Connecting..." | No |
+| Private | View-key modal, content hidden | No |
 | Live | Editor + preview, status bar shows "live" | If edit key entered |
 | Offline | Same UI, status bar shows "sharer offline", editor read-only | No |
 | NotFound | Landing page, "no one is sharing this document" | No |
 
 **Rule:** NotFound is only reachable from Loading. Once Live, the viewer can only go to Offline (recoverable), never back to the landing page.
+
+**Private gate:** In private mode the viewer cannot reach Live until it submits a valid key. The key is held in memory and re-sent automatically on reconnect (a page reload re-prompts). Entering the **edit key** at this gate both grants view access and unlocks editing — no separate edit-key modal needed.
 
 ## Message types
 
@@ -237,8 +245,9 @@ Two people share a file across machines. One is the leader, the other joins and 
 
 | Type | Fields | Sent by |
 |------|--------|---------|
-| `set-token` | `publicKey` | Sharer (on connect) |
+| `set-token` | `publicKey`, `viewKey?` | Sharer (on connect); `viewKey` present in private mode |
 | `push` | `content`, `signature`, `meta` | Sharer or unlocked viewer |
+| `view-auth` | `key` | Viewer in a private room; `key` is the view key **or** the edit key |
 
 ### Relay to sender only
 
@@ -246,16 +255,20 @@ Two people share a file across machines. One is the leader, the other joins and 
 |------|---------|
 | `sharer-ack` | set-token accepted; CLI shows join URL |
 | `auth-error` | push rejected (bad signature) |
+| `view-auth-ack` | view-auth accepted; a full `init` (with content) follows |
+| `view-auth-error` | view-auth rejected (key matched neither the view key nor the edit key) |
 
 ### Relay to all (broadcast)
 
 | Type | Fields | Purpose |
 |------|--------|---------|
-| `init` | `content`, `meta`, `guestId`, `hasSharer`, `protected`, `publicKey` | Sent to each connection on connect |
-| `update` | `content`, `meta`, `signature` | After a valid push |
-| `sharer-here` | `protected`, `publicKey` | Sharer joined an empty room |
+| `init` | `content`, `meta`, `guestId`, `hasSharer`, `protected`, `publicKey`, `private` | Sent to each connection on connect. In private mode, unauthenticated connections get `content: null` and `publicKey: null`. |
+| `update` | `content`, `meta`, `signature` | After a valid push. In private mode, sent only to view-authenticated connections. |
+| `sharer-here` | `protected`, `publicKey`, `private` | Sharer joined an empty room |
 | `sharer-gone` | - | Last sharer disconnected |
 | `auth-rejected` | `editor` | Someone's push was rejected (info for sharer) |
+
+In **private mode** (sharer ran `livedown share --private`), the relay withholds content and the edit public key from any connection until it authenticates with a `view-auth`. The view key is a 64-hex-char symmetric token, independent of the edit key, but the **edit key is a superset** — submitting it in `view-auth` also grants view access (the relay derives its public key and compares to the room's). The sharer's own connection is auto-authenticated on `set-token`.
 
 ## Security
 
@@ -275,6 +288,16 @@ Every push message is signed with the private key. Three independent verificatio
 | **Browser** | Public key (from relay) | Edit key matches public key on entry | Wrong key is rejected before any push |
 
 A compromised relay still cannot forge updates that the local watcher would accept — the watcher re-verifies every signature before writing to disk.
+
+### Private mode (view key)
+
+By default the viewer URL grants read access — only editing is key-gated. `livedown share --private` adds a second credential, the **view key**, that gates reading too, so a leaked Join URL reveals nothing.
+
+- **View key** — a 64-hex-char symmetric token, independent of the edit key. Distribute it for view-only access.
+- **Edit key is a superset** — submitting the edit key at the view gate also grants view access (the relay derives its public key and matches it against the room's), so editors need only one secret.
+- The relay withholds content and the public key until a connection authenticates; unauthenticated `update` broadcasts are suppressed.
+
+Unlike write integrity (which has defense in depth — relay *and* watcher both verify), **view gating is enforced at a single point: the relay.** This does not widen the trust boundary — the relay already holds document content in plaintext, so confidentiality *from the relay* was never claimed. The view key stops one threat: a leaked URL handing content to a stranger. Achieving defense-in-depth for confidentiality would require end-to-end encryption (relay broadcasts ciphertext), which is out of scope. The view key travels only in point-to-point messages (`set-token`, `view-auth`), never in a broadcast payload.
 
 Principles:
 

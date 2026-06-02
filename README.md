@@ -53,6 +53,10 @@ Options:
 - `-r, --relay <host>` — Relay host (default: `livedown.dwmkerr.partykit.dev`)
 - `-e, --editor <name>` — Your name shown to viewers
 - `-k, --edit-key <key>` — Edit key (auto-generated if omitted)
+- `-p, --private` — Require a view key to read the document (auto-generates one)
+- `--view-key <key>` — View key for private mode (auto-generated if omitted; implies `--private`)
+
+By default anyone with the Join URL can read the document. With `--private`, the CLI prints a separate **view key** that viewers must enter before any content is delivered — a leaked URL reveals nothing. The edit key also grants view access, so editors need only one secret.
 
 ## Developer Guide
 
@@ -87,6 +91,8 @@ Livedown writes remote content to your local disk, so every update is signed wit
 - The **browser** checks that any entered edit key matches the room's public key before it will send a push.
 
 The URL is a locator, not a credential — it is safe to share. The edit key is the credential and must stay private.
+
+**Private mode** (`--private`) adds a **view key** that gates reading as well, so a leaked URL exposes no content. The view key is independent of the edit key, but the edit key also grants view access. View gating is enforced at the relay (the relay already holds content in plaintext); for confidentiality *from* the relay you would need end-to-end encryption, which livedown does not currently do.
 
 See [docs/architecture.md](docs/architecture.md) for the full security model, including the keypair lifecycle and defense-in-depth table.
 
