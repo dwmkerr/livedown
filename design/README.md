@@ -10,6 +10,7 @@ The canvas itself is the source of truth — edit there, re-export, drop a new z
 ## Bundles
 
 - `design-bundle-1.zip` — first export (viewer V2 Reader-primary, landing hero, system-diagram variants).
+- `design-bundle-2.zip` — landing refresh: leaner hero (52pt, no blurb), system-diagram lifted to centerpiece between hero and how-it-works, commit-ritual row below diagram, dropped Join-a-room nav/modal, dropped three-journeys section.
 
 ## Working with a bundle
 

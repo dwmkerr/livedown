@@ -72,19 +72,18 @@ Relay does not broadcast presence. Client derives members from messages it has s
 
 **Lives in `site/` — separate from the PartyKit relay deploy.** `site/index.html` is the landing page shipped to livedown.dev (the user-facing marketing surface). The relay (`public/`) hosts only the viewer and the not-found card. Keeping them split means marketing copy changes do not require a relay redeploy and vice-versa.
 
-Content (dark Catppuccin chrome, follows design bundle hero):
+Content (dark Catppuccin chrome, follows design bundle hero). Page flow: hero → system diagram → commit ritual → security → footer.
 
-- **Top nav** — `livedown` wordmark + npm version · How it works · Security · **Join a room** (opens modal) · GitHub star button (live star count from api.github.com).
-- **Hero** — pulsing blue pill `ephemeral · signed · zero-install` → headline *"One file. Many humans. Many agents. All live."* → subhead → `$ npx @dwmkerr/livedown share ./file.md` (copy button) → tagline `no account · node 18+ · MIT` → CTA row: primary "Join a room" + ghost "View on GitHub".
-- **How it works strip** — three cards (CLI + Watcher, Stateful Relay, Browser Viewer) with runtime annotations.
+- **Top nav** — `livedown` wordmark + npm version · Security · GitHub star button (live star count from api.github.com).
+- **Hero** — pulsing blue pill `ephemeral · signed · zero-install` → headline *"Share a local markdown file, collaborate with many users and agents live, no account needed."* (opening clause white, tail dimmed) → `$ npx @dwmkerr/livedown share ./file.md` (copy button). Compact (≈40pt, no blurb paragraph, no tagline) so the system diagram sits high on the page.
+- **System diagram** — boxes-and-lines centerpiece, fixed 1200×520 source canvas scaled uniformly to fit container width. Cursor IDE surface (LEADER, `livedown share`) on the left, browser viewer card (amy.chen typing, AC/JW/G3 roster) top-center, stateful relay card middle-center, Vim + Claude Code surface (JOINED, `livedown join`) on the right. Animated SVG packets travel the signed/broadcast/disk-write paths; protocol labels (`signed`, `→ disk`, `push`, `broadcast`) sit next to the connectors. Bottom caption: `✦ 3 humans · 2 agents · 1 file · in sync across 3 machines`.
+- **Commit ritual** — single mono row directly below the diagram: `when you're done — $ ^C && git commit -am "spec: reviewed with @amy" → room evaporates, file is yours.`
 - **Security** — "Three layers of verification" prose + keyword chip row + layer-verifies-rejects table.
-- **Footer** — wordmark, MIT, docs · github · npm.
-
-**Join a room modal** — paste room id (`d5dc3b/notes.md`) or full share URL; parser strips everything up to `#` then redirects to `https://<RELAY_HOST>/#<room>`. `RELAY_HOST` is constant inside the page; change it if the relay moves.
+- **Footer** — left: `livedown` wordmark linking to the GitHub repo. Right: `docs` · `github`. No MIT line, no author byline, no npm link — discovery routes through GitHub.
 
 ## Three-state routing
 
-- **livedown.dev** (`site/`) — landing. No hash needed.
+- **livedown.dev** (`site/`) — landing. No hash needed. Acts as the share-link target as well: a share URL of the form `https://livedown.dev/#<room>` is parsed by the viewer (`public/`) once the host points there, so the landing has no "Join a room" affordance — pasting any livedown URL into the browser address bar is the join path.
 - **partykit.dev/#<doc>** (`public/`) — viewer. Client reads hash and opens WS. States: `loading` → `live` | `offline` | `notfound`.
 - **partykit.dev** with no hash, or `notfound` after WS confirms no sharer ever — inline not-found card (dark surface, error heading, install command, primary CTA back to livedown.dev, secondary GitHub link). No separate file.
 
