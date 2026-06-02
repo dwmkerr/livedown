@@ -6,6 +6,25 @@ Content delivery is currently unconditional: `onConnect` sends the full `init` m
 
 The relay runs on PartyKit / Cloudflare Workers and uses `@noble/curves` for Ed25519. The browser uses `tweetnacl` (CDN). Node CLI uses `tweetnacl` too. No additional crypto libraries exist.
 
+## Security Model & Principle Alignment
+
+View gating is enforced at a **single point — the relay**. This is a deliberate, documented departure from how *write integrity* is protected, and reviewers should understand why it does not violate the project's security principles (see `.claude/agents/security.md`).
+
+**Write integrity has defense in depth (Principle 2).** Every push is signed with the Ed25519 edit key; the relay verifies before broadcasting AND the watcher re-verifies before writing to disk. A compromised relay still cannot forge a write the watcher accepts.
+
+**View confidentiality is single-point by nature.** No second component *can* re-enforce a view gate: the browser is the party requesting content, and the watcher is not in the view path. The only way to give confidentiality defense in depth is end-to-end encryption (relay broadcasts ciphertext) — which is an explicit Non-Goal below.
+
+**Why this is acceptable under the existing threat model.** The relay already holds document content in plaintext and has since day one — confidentiality *from the relay* was never claimed by any principle. Adding a view key that the relay also holds does **not** expand the trust boundary: the content is the more sensitive asset and is already there. The view gate exists to stop one specific threat — a leaked Join URL handing content to an unauthenticated stranger — and only the relay can stop that.
+
+**Per-principle check:**
+
+- **P1 (URLs are locators):** ✓ The view key is entered out-of-band and never placed in the URL (see Non-Goals).
+- **P2 (Defense in depth):** Applies to write integrity (multi-layer, unchanged). View confidentiality is single-point (relay) by necessity; achieving depth here would require E2E encryption (Non-Goal). The trust boundary is not widened — the relay already sees plaintext.
+- **P3 (Secrets never transit broadcast channels):** ✓ The view key travels only in the point-to-point `view-auth` message (client→relay) and `set-token` (sharer→relay). It is never placed in a broadcast `update`/`init` payload sent to other viewers. The edit key (Ed25519 seed) still never transits at all.
+- **P4 (No custom crypto):** ✓ View-key comparison is a string `===` (not a cryptographic operation). Edit-key verification reuses `@noble/curves` `getPublicKey`. No new crypto is written.
+
+**If the threat model later requires confidentiality from the relay**, the upgrade path is symmetric content encryption (`nacl.secretbox`, already available via tweetnacl): the sharer encrypts content client-side, the relay broadcasts ciphertext, and the view key becomes the decryption key that is never sent to the relay. That change would graduate Principle 2 to cover confidentiality. It is out of scope for this change.
+
 ## Goals / Non-Goals
 
 **Goals:**
