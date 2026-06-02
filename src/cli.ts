@@ -7,7 +7,11 @@ import path from "path";
 import readline from "readline";
 import { Command } from "commander";
 import { startWatcher } from "./watcher";
-import { generateEditKeyPair, publicKeyFromEditKey } from "./token";
+import {
+  generateEditKeyPair,
+  generateViewKey,
+  publicKeyFromEditKey,
+} from "./token";
 import {
   clearLine,
   cyan,
@@ -46,6 +50,8 @@ async function startSharing(
     editor: string;
     doc?: string;
     editKey?: string;
+    private?: boolean;
+    viewKey?: string;
     dev?: boolean;
   }
 ): Promise<void> {
@@ -73,6 +79,10 @@ async function startSharing(
     editKey = kp.editKey;
     publicKey = kp.publicKey;
   }
+  // Private mode: --view-key wins; --private alone generates one. Supplying a
+  // view key implies private even without the flag.
+  const isPrivate = !!opts.private || !!opts.viewKey;
+  const viewKey = isPrivate ? opts.viewKey || generateViewKey() : undefined;
   const viewerUrl = buildViewerUrl(opts.relay, doc);
   const roomUrl = buildRoomUrl(opts.relay, doc);
 
@@ -87,7 +97,15 @@ async function startSharing(
   }
 
   try {
-    await startWatcher(filePath, doc, roomUrl, opts.editor, editKey, publicKey);
+    await startWatcher(
+      filePath,
+      doc,
+      roomUrl,
+      opts.editor,
+      editKey,
+      publicKey,
+      viewKey
+    );
   } catch (err) {
     process.stdout.write(clearLine());
     const msg = (err as Error).message;
@@ -106,10 +124,15 @@ async function startSharing(
   console.log(
     `  Join      ${underline(link(viewerUrl))} ${dim("(press o to open)")}`
   );
+  if (viewKey) {
+    console.log(`  View key  ${cyan(viewKey)} ${dim("(press v to copy)")}`);
+  }
   console.log(`  Edit key  ${yellow(editKey)} ${dim("(press c to copy)")}\n`);
 
   if (process.stdin.isTTY) {
-    const hints = dim("  o open  c copy key  q quit");
+    const hints = viewKey
+      ? dim("  o open  v copy view key  c copy key  q quit")
+      : dim("  o open  c copy key  q quit");
     process.stdout.write(hints);
     process.stdin.setRawMode(true);
     process.stdin.resume();
@@ -124,6 +147,21 @@ async function startSharing(
           await clipboardy.write(editKey);
           process.stdout.write(
             `${clearLine()}  ${green("✓ Edit key copied to clipboard")}\n`
+          );
+          process.stdout.write(hints);
+        } catch {
+          process.stdout.write(
+            `${clearLine()}  ${red("✗ Could not copy to clipboard")}\n`
+          );
+          process.stdout.write(hints);
+        }
+      }
+      if (ch === "v" && viewKey) {
+        try {
+          const { default: clipboardy } = await import("clipboardy");
+          await clipboardy.write(viewKey);
+          process.stdout.write(
+            `${clearLine()}  ${green("✓ View key copied to clipboard")}\n`
           );
           process.stdout.write(hints);
         } catch {
@@ -177,6 +215,11 @@ program
   .option("-e, --editor <name>", "Your name shown to viewers", defaultEditor)
   .option("-d, --doc <name>", "Document name (defaults to filename)")
   .option("-k, --edit-key <key>", "Edit key (auto-generated if omitted)")
+  .option("-p, --private", "Require a view key to read the document")
+  .option(
+    "--view-key <key>",
+    "View key for private mode (auto-generated if omitted; implies --private)"
+  )
   .option("-D, --dev", "Use the local partykit dev server (localhost:1999)")
   .action((file, opts) =>
     // Merge root-level --dev so either order works.

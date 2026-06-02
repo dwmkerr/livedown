@@ -519,42 +519,43 @@
     }
     @keyframes spin { to { transform: rotate(360deg); } }
 
-    /* ── Edit-token modal ────────────────────────────────────── */
-    #token-modal {
+    /* ── Edit-token + view-key modals ────────────────────────── */
+    #token-modal, #view-modal {
       display: none; position: fixed; inset: 0; z-index: 200;
       background: rgba(10,10,16,.55);
       justify-content: center; align-items: center;
     }
-    #token-modal.open { display: flex; }
-    #token-box {
+    #token-modal.open, #view-modal.open { display: flex; }
+    #token-box, #view-box {
       background: #fff; border: 1px solid #e4e6eb; border-radius: 10px;
       padding: 1.5rem; width: 360px; text-align: center;
       font-family: var(--sans); color: #17171f;
       box-shadow: 0 20px 60px rgba(0,0,0,0.25);
     }
-    #token-box h3 { margin: 0 0 .4rem; font-size: 1.05em; font-weight: 600; }
-    #token-box p { margin: 0 0 1rem; font-size: .85em; color: #6a6a80; line-height: 1.5; }
-    #token-input {
+    #token-box h3, #view-box h3 { margin: 0 0 .4rem; font-size: 1.05em; font-weight: 600; }
+    #token-box p, #view-box p { margin: 0 0 1rem; font-size: .85em; color: #6a6a80; line-height: 1.5; }
+    #token-input, #view-input {
       width: 100%; padding: .55rem .7rem; border: 1px solid #e4e6eb;
       border-radius: 6px; background: #fafbfc; color: #17171f;
       font-family: var(--mono); font-size: .85em;
       text-align: center; outline: none;
     }
-    #token-input:focus { border-color: var(--ld-blue); background: #fff; }
-    #token-input.error { border-color: var(--ld-pink); background: #fff5f7; }
-    #token-submit {
+    #token-input:focus, #view-input:focus { border-color: var(--ld-blue); background: #fff; }
+    #token-input.error, #view-input.error { border-color: var(--ld-pink); background: #fff5f7; }
+    #token-submit, #view-submit {
       margin-top: .8rem; padding: .55rem 1.5rem;
       background: #17171f; color: #fff; border: none; border-radius: 6px;
       font-weight: 600; cursor: pointer; font-size: .88em;
     }
-    #token-submit:hover { background: #2a2a38; }
+    #token-submit:hover, #view-submit:hover { background: #2a2a38; }
+    #token-submit:disabled, #view-submit:disabled { opacity: .5; cursor: default; }
     #token-cancel {
       margin-top: .5rem; padding: .3rem 1rem;
       background: none; color: #8a8aa0; border: none; cursor: pointer;
       font-size: .8em;
     }
     #token-cancel:hover { color: #17171f; }
-    #token-error-msg {
+    #token-error-msg, #view-error-msg {
       color: var(--ld-pink); font-size: .8em; margin-top: .5rem;
       display: none;
     }
@@ -710,6 +711,17 @@
     <button id="token-submit">Unlock editing</button>
     <br>
     <button id="token-cancel">View only</button>
+  </div>
+</div>
+
+<div id="view-modal">
+  <div id="view-box">
+    <h3>This document is private</h3>
+    <p>Enter the view key to read it. Entering an edit key instead grants read <em>and</em> edit access.</p>
+    <input id="view-input" type="text" placeholder="Paste view key or edit key" autocomplete="off" spellcheck="false">
+    <div id="view-error-msg">Incorrect key. Try again.</div>
+    <br>
+    <button id="view-submit">Unlock</button>
   </div>
 </div>
 
@@ -915,6 +927,11 @@
   let roomPublicKey = null;
   let isProtected = false;
   let editUnlocked = false;
+  // Private mode: enteredKey is the view OR edit key the user typed; it is kept
+  // in memory (not localStorage) so it survives reconnects but not page reloads.
+  let isPrivate = false;
+  let enteredKey = null;
+  let viewAuthenticated = false;
 
   function hexToBytes(hex) {
     var bytes = new Uint8Array(hex.length / 2);
@@ -963,7 +980,8 @@
       return;
     }
     pill.classList.add('locked');
-    pill.innerHTML = '<svg width="11" height="11" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="9" width="12" height="9" rx="1.5"/><path d="M7 9V6a3 3 0 0 1 6 0v3"/></svg>Locked<span class="hint">· enter key</span>';
+    var lockLabel = isPrivate && viewAuthenticated ? 'View only' : 'Locked';
+    pill.innerHTML = '<svg width="11" height="11" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="9" width="12" height="9" rx="1.5"/><path d="M7 9V6a3 3 0 0 1 6 0v3"/></svg>' + lockLabel + '<span class="hint">· enter key</span>';
     pill.title = 'This document is protected. Click to enter the edit key.';
     pill.onclick = function () { showTokenModal(); };
   }
@@ -1221,6 +1239,37 @@
   });
   tokenCancel.addEventListener('click', hideTokenModal);
 
+  // ── View-key modal (private rooms) ───────────────────────────
+  const viewModal  = document.getElementById('view-modal');
+  const viewInput  = document.getElementById('view-input');
+  const viewSubmit = document.getElementById('view-submit');
+  const viewError  = document.getElementById('view-error-msg');
+
+  function showViewModal() {
+    viewModal.classList.add('open');
+    viewInput.value = '';
+    viewInput.classList.remove('error');
+    viewError.style.display = 'none';
+    viewSubmit.disabled = false;
+    viewInput.focus();
+  }
+  function hideViewModal() { viewModal.classList.remove('open'); }
+
+  viewSubmit.addEventListener('click', function () {
+    var val = viewInput.value.trim();
+    if (!val) { viewInput.classList.add('error'); return; }
+    if (!ws || ws.readyState !== 1) return;
+    // Hold the candidate key; the relay validates it (view key or edit key).
+    // It only becomes authoritative on view-auth-ack.
+    enteredKey = val;
+    viewSubmit.disabled = true;
+    ws.send(JSON.stringify({ type: 'view-auth', key: val }));
+  });
+
+  viewInput.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') viewSubmit.click();
+  });
+
   // ── Render preview ───────────────────────────────────────────
   function renderPreview(content) {
     var inner = document.getElementById('preview-inner');
@@ -1289,8 +1338,26 @@
 
   function applySharerInfo(msg) {
     isProtected = !!msg.protected;
+    if (msg.private) isPrivate = true;
     if (msg.publicKey) roomPublicKey = msg.publicKey;
     updateLockPill();
+  }
+
+  // If the key the user entered in the view modal is actually the edit key, it
+  // derives the room's public key — unlock editing without a second modal.
+  function tryUnlockEditFromKey(val) {
+    if (!val || !roomPublicKey || editUnlocked) return;
+    try {
+      var seed = hexToBytes(val);
+      if (seed.length !== 32) return;
+      var kp = nacl.sign.keyPair.fromSeed(seed);
+      if (bytesToHex(kp.publicKey) !== roomPublicKey) return;
+      editKey = val;
+      secretKey = kp.secretKey;
+      editUnlocked = true;
+      cm.setOption('readOnly', false);
+      updateLockPill();
+    } catch (e) { /* not an edit key — view-only */ }
   }
 
   function connect() {
@@ -1299,6 +1366,10 @@
     ws.onopen = () => {
       reconnectDelay = 1000;
       document.getElementById('loading').classList.remove('active');
+      // Re-authenticate automatically on reconnect — the key lives in memory.
+      if (isPrivate && enteredKey && !viewAuthenticated) {
+        ws.send(JSON.stringify({ type: 'view-auth', key: enteredKey }));
+      }
     };
 
     ws.onmessage = (e) => {
@@ -1311,9 +1382,21 @@
         members.get(myGuestName).color = myColor;
         renderRoster();
 
+        applySharerInfo(msg);
+
+        // Private room, not yet authenticated: withhold content, prompt for a
+        // key. On reconnect we already hold a key and re-auth in onopen, so skip
+        // the modal and wait for the follow-up authed init.
+        if (isPrivate && !viewAuthenticated) {
+          if (!enteredKey) showViewModal();
+          return;
+        }
+
+        // Authed (or public). If we authed with the edit key, unlock editing.
+        if (isPrivate && enteredKey) tryUnlockEditFromKey(enteredKey);
+
         if (msg.content) { cm.setValue(msg.content); renderPreview(msg.content); }
         setMeta(msg.meta);
-        applySharerInfo(msg);
         if (msg.meta?.editor) {
           upsertMember(msg.meta.editor, 'sharer');
           recordEdit(msg.meta.editor, msg.meta.editedAt, msg.content);
@@ -1322,6 +1405,24 @@
         if (msg.hasSharer) setAppState('live');
         else if (hasEverBeenLive) setAppState('offline');
         else setAppState('notfound', notFoundMessage());
+        return;
+      }
+
+      if (msg.type === 'view-auth-ack') {
+        viewAuthenticated = true;
+        hideViewModal();
+        updateLockPill();
+        // Full content arrives in the follow-up init the relay sends next.
+        return;
+      }
+
+      if (msg.type === 'view-auth-error') {
+        // Wrong key — clear it so reconnects don't retry a bad value, reopen.
+        enteredKey = null;
+        viewSubmit.disabled = false;
+        if (!viewModal.classList.contains('open')) showViewModal();
+        viewInput.classList.add('error');
+        viewError.style.display = 'block';
         return;
       }
 
@@ -1349,6 +1450,12 @@
 
       if (msg.type === 'sharer-here') {
         applySharerInfo(msg);
+        // Don't reveal the editor until the viewer has authenticated — the
+        // view modal stays up until view-auth succeeds.
+        if (isPrivate && !viewAuthenticated) {
+          if (!enteredKey) showViewModal();
+          return;
+        }
         setAppState('live');
         return;
       }
@@ -1360,6 +1467,8 @@
     };
 
     ws.onclose = () => {
+      // A fresh connection is not authenticated server-side; force re-auth.
+      viewAuthenticated = false;
       setStatus('disconnected');
       setTimeout(connect, reconnectDelay);
       reconnectDelay = Math.min(reconnectDelay * 2, 10000);
