@@ -10,3 +10,4 @@ coverage/
 .worktrees/
 scheduled_tasks.lock
 .claude/worktrees/
+scratch/
