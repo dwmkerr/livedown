@@ -72,15 +72,14 @@ Relay does not broadcast presence. Client derives members from messages it has s
 
 **Lives in `site/` — separate from the PartyKit relay deploy.** `site/index.html` is the landing page shipped to livedown.dev (the user-facing marketing surface). The relay (`public/`) hosts only the viewer and the not-found card. Keeping them split means marketing copy changes do not require a relay redeploy and vice-versa.
 
-Content (dark Catppuccin chrome, follows design bundle hero). Page flow: hero → system diagram → commit ritual → how it works → security → footer.
+Content (dark Catppuccin chrome, follows design bundle hero). Page flow: hero → system diagram → commit ritual → security → footer.
 
-- **Top nav** — `livedown` wordmark + npm version · How it works · Security · GitHub star button (live star count from api.github.com).
-- **Hero** — pulsing blue pill `ephemeral · signed · zero-install` → headline *"Share a local markdown file, collaborate with many users and agents live."* (opening clause white, tail dimmed) → `$ npx @dwmkerr/livedown share ./file.md` (copy button) → tagline `no account · node 18+ · MIT`. Compact (52pt, no blurb paragraph) so the system diagram sits high on the page.
+- **Top nav** — `livedown` wordmark + npm version · Security · GitHub star button (live star count from api.github.com).
+- **Hero** — pulsing blue pill `ephemeral · signed · zero-install` → headline *"Share a local markdown file, collaborate with many users and agents live, no account needed."* (opening clause white, tail dimmed) → `$ npx @dwmkerr/livedown share ./file.md` (copy button). Compact (≈40pt, no blurb paragraph, no tagline) so the system diagram sits high on the page.
 - **System diagram** — boxes-and-lines centerpiece, fixed 1200×520 source canvas scaled uniformly to fit container width. Cursor IDE surface (LEADER, `livedown share`) on the left, browser viewer card (amy.chen typing, AC/JW/G3 roster) top-center, stateful relay card middle-center, Vim + Claude Code surface (JOINED, `livedown join`) on the right. Animated SVG packets travel the signed/broadcast/disk-write paths; protocol labels (`signed`, `→ disk`, `push`, `broadcast`) sit next to the connectors. Bottom caption: `✦ 3 humans · 2 agents · 1 file · in sync across 3 machines`.
 - **Commit ritual** — single mono row directly below the diagram: `when you're done — $ ^C && git commit -am "spec: reviewed with @amy" → room evaporates, file is yours.`
-- **How it works strip** — three cards (CLI + Watcher, Stateful Relay, Browser Viewer) with runtime annotations.
 - **Security** — "Three layers of verification" prose + keyword chip row + layer-verifies-rejects table.
-- **Footer** — wordmark, MIT, docs · github · npm.
+- **Footer** — left: `livedown` wordmark linking to the GitHub repo. Right: `docs` · `github`. No MIT line, no author byline, no npm link — discovery routes through GitHub.
 
 ## Three-state routing
 
