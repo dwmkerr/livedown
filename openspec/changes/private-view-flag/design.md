@@ -12,6 +12,7 @@ The relay runs on PartyKit / Cloudflare Workers and uses `@noble/curves` for Ed2
 - Gate content delivery behind a view key in private mode.
 - Keep the default (public) mode behaviour unchanged.
 - Use a separate view key so view access and edit access can be distributed independently.
+- Treat the edit key as a superset of the view key: a holder of the edit key gains view access without also holding the view key.
 - Authenticate viewers per-connection at the relay, not via URL parameters.
 - Auto-re-authenticate on WebSocket reconnect without user interaction.
 - Withhold both content and the edit public key from unauthenticated connections.
@@ -26,15 +27,15 @@ The relay runs on PartyKit / Cloudflare Workers and uses `@noble/curves` for Ed2
 
 ### Decision 1: Two separate keys (view key ≠ edit key)
 
-**Chosen:** Generate a new random `viewKey` (32 bytes → 64 hex chars) independent of the `editKey`.
+**Chosen:** Generate a new random `viewKey` (32 bytes → 64 hex chars) independent of the `editKey`. The edit key is a *superset*: it grants view access too (see Decision 8), but the view key never grants edit access.
 
-**Why over single key:** A single key would mean anyone granted view access can also sign pushes (they hold the private seed). Many use cases need view-only distribution (e.g., share a draft with reviewers, keep edit control with one person). Two keys preserves role separation.
+**Why over single key:** A single key would mean anyone granted view access can also sign pushes (they hold the private seed). Many use cases need view-only distribution (e.g., share a draft with reviewers, keep edit control with one person). Two keys preserves role separation. Making the edit key *also* a view key (one-way) means editors only need one secret, while view-only distribution stays possible.
 
 **Alternative considered:** Derive the view key from the edit key (e.g., HMAC of edit key with a constant). Rejected — if the view key is compromised, an attacker could brute-force the edit key derivation. Fully independent keys avoid this.
 
 ### Decision 2: Direct token comparison at the relay (no challenge-response)
 
-**Chosen:** Sharer sends `viewKey` (raw hex) in `set-token`; viewers send the same `viewKey` in `view-auth`; relay compares directly using `===`.
+**Chosen:** Sharer sends `viewKey` (raw hex) in `set-token`; viewers send a candidate `key` in `view-auth`; relay grants view access if `key === viewKey` **or** if `key` is the edit key (verified by public-key derivation, see Decision 8). The `view-auth` message field is named `key` because it may carry either the view key or the edit key.
 
 **Why over challenge-response (nonce signing):** The relay already holds content in plaintext and is trusted infrastructure. The WebSocket connection is wss:// (TLS), so the `view-auth` message is encrypted in transit. A challenge-response round trip would add protocol complexity (new message type, timing edge cases) without meaningfully improving security given the existing trust model.
 
@@ -71,6 +72,16 @@ The relay runs on PartyKit / Cloudflare Workers and uses `@noble/curves` for Ed2
 **Chosen:** In private mode, unauthenticated `init` sets `publicKey: null`.
 
 **Why:** The edit public key is the target for offline brute-force of the edit key. Withholding it removes that attack surface for unauthenticated connections. After view-auth succeeds, the full `init` (with public key) is sent and the browser can derive edit capability.
+
+### Decision 8: Edit key also grants view access (verified by public-key derivation)
+
+**Chosen:** In `view-auth`, if the submitted `key` does not match the view key, the relay treats it as a candidate edit key: it derives the Ed25519 public key from the 32-byte seed (`ed25519.getPublicKey`) and compares to the room's stored `publicKey`. A match grants view authentication.
+
+**Why:** Editors hold the edit key out-of-band. Requiring them to *also* hold the view key is needless friction. Since the relay already stores the room's public key (from `set-token`), it can verify edit-key possession with zero new secrets and no new crypto library (`@noble/curves` already exposes `getPublicKey`). This makes the edit key a one-way superset of the view key.
+
+**Browser consequence:** The single view-key modal accepts either key. After the follow-up `init` arrives (carrying `publicKey`), the browser derives the public key from the entered value locally (tweetnacl); if it matches `publicKey`, the browser marks the connection `editUnlocked` so the user can edit immediately without a second modal. Otherwise the entry was a view key → view-only.
+
+**Why not a separate edit-key path in the modal:** One field is simpler for users and code. The relay distinguishes the two cases; the browser distinguishes them post-auth via the same derivation. No extra round trip.
 
 ## Risks / Trade-offs
 

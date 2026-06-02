@@ -68,14 +68,19 @@ In private mode the relay SHALL withhold document content and the edit public ke
 - **THEN** the relay SHALL mark that connection as view-authenticated without requiring a `view-auth` message
 
 ### Requirement: Relay handles view-auth message
-The relay SHALL accept a `view-auth` message from unauthenticated connections in private rooms and authenticate them if the view key matches.
+The relay SHALL accept a `view-auth` message carrying a candidate `key` from unauthenticated connections in private rooms and authenticate them if the key matches the view key OR is the edit key. The edit key is a superset: holding it grants view access.
 
 #### Scenario: Correct view key authenticates the connection
-- **WHEN** a viewer in a private room sends `view-auth { viewKey: "<correct-hex>" }`
+- **WHEN** a viewer in a private room sends `view-auth { key: "<view-key-hex>" }`
 - **THEN** the relay SHALL mark the connection as view-authenticated, send `view-auth-ack` to the sender, and then send a full `init` message (with content and public key) to the sender
 
-#### Scenario: Incorrect view key is rejected
-- **WHEN** a viewer in a private room sends `view-auth { viewKey: "<wrong-hex>" }`
+#### Scenario: Edit key authenticates the connection
+- **WHEN** a viewer in a private room sends `view-auth { key: "<edit-key-hex>" }` where the 32-byte seed derives the room's stored public key
+- **THEN** the relay SHALL mark the connection as view-authenticated, send `view-auth-ack` to the sender, and then send a full `init` message (with content and public key) to the sender
+- **AND** the relay SHALL NOT require the separate view key from that connection
+
+#### Scenario: Incorrect key is rejected
+- **WHEN** a viewer in a private room sends `view-auth { key: "<wrong-hex>" }` that matches neither the view key nor the edit key (its derived public key does not match)
 - **THEN** the relay SHALL send `view-auth-error` to the sender and the connection SHALL remain unauthenticated
 
 #### Scenario: view-auth in a public room is ignored
@@ -83,35 +88,40 @@ The relay SHALL accept a `view-auth` message from unauthenticated connections in
 - **THEN** the relay SHALL ignore the message (no response, no state change)
 
 ### Requirement: Browser displays view-key modal for private rooms
-The browser viewer SHALL detect `private: true` in the `init` message and display a "View key required" modal before rendering any content.
+The browser viewer SHALL detect `private: true` in the `init` message and display a key-required modal before rendering any content. The modal SHALL accept either the view key or the edit key.
 
 #### Scenario: Modal appears on init with private: true
 - **WHEN** the browser receives `init` with `private: true` and `content: null`
-- **THEN** the editor and preview SHALL remain hidden and a modal SHALL be displayed asking for the view key
+- **THEN** the editor and preview SHALL remain hidden and a modal SHALL be displayed asking for the view key or edit key
 
 #### Scenario: Correct view key dismisses modal and renders content
 - **WHEN** the user enters the correct view key in the modal and submits
-- **THEN** the browser SHALL send `view-auth`, receive `view-auth-ack` followed by a full `init`, render the content, and dismiss the modal transitioning to the `live` state
+- **THEN** the browser SHALL send `view-auth { key }`, receive `view-auth-ack` followed by a full `init`, render the content, and dismiss the modal transitioning to the `live` state
 
-#### Scenario: Incorrect view key shows error in modal
-- **WHEN** the user enters an incorrect view key and submits
+#### Scenario: Edit key in the modal grants view and unlocks editing
+- **WHEN** the user enters the edit key in the modal and submits
+- **THEN** the browser SHALL send `view-auth { key }`, receive `view-auth-ack` followed by a full `init`, and render the content
+- **AND** after the `init` arrives the browser SHALL derive the public key from the entered value and, on a match with `init.publicKey`, mark the connection `editUnlocked` so the editor is writable without a separate edit-key modal
+
+#### Scenario: Incorrect key shows error in modal
+- **WHEN** the user enters a value matching neither the view key nor the edit key and submits
 - **THEN** the browser SHALL receive `view-auth-error` and the modal SHALL remain open with an error message
 
-#### Scenario: Modal is separate from the edit-key modal
-- **WHEN** both view authentication and edit authentication are required
-- **THEN** the view-key modal SHALL be shown first (before content is visible) and the edit-key modal SHALL be available separately after view authentication
+#### Scenario: View-only viewer can still enter the edit key separately
+- **WHEN** a viewer authenticated with the view key (not the edit key) later wants to edit
+- **THEN** the existing edit-key modal SHALL remain available after view authentication for entering the edit key
 
 ### Requirement: Browser auto-re-authenticates on reconnect
-After the user has successfully entered the view key, the browser SHALL automatically re-send `view-auth` whenever the WebSocket reconnects, without prompting the user again.
+After the user has successfully entered a key (view or edit), the browser SHALL automatically re-send `view-auth` with that key whenever the WebSocket reconnects, without prompting the user again.
 
 #### Scenario: Reconnect triggers automatic view-auth
-- **WHEN** the WebSocket closes and reconnects while `viewKey` is held in memory
-- **THEN** the browser SHALL send `view-auth { viewKey }` immediately on `ws.onopen`
+- **WHEN** the WebSocket closes and reconnects while the entered key is held in memory
+- **THEN** the browser SHALL send `view-auth { key }` immediately on `ws.onopen`
 - **AND** the relay SHALL respond with `view-auth-ack` and a full `init`, restoring the live state without user interaction
 
 #### Scenario: Page reload requires re-entry
 - **WHEN** the user reloads the page
-- **THEN** the view key is no longer in memory and the modal SHALL be shown again
+- **THEN** the entered key is no longer in memory and the modal SHALL be shown again
 
 ### Requirement: Profile badge shows view role in private rooms
 In private rooms the profile badge SHALL indicate whether the viewer has view-only access or edit access.
