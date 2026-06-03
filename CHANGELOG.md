@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.1.6](https://github.com/dwmkerr/livedown/compare/v0.1.5...v0.1.6) (2026-06-03)
+
+
+### Features
+
+* implement private view mode for [#16](https://github.com/dwmkerr/livedown/issues/16) (--private / view key) ([#120](https://github.com/dwmkerr/livedown/issues/120)) ([d827fce](https://github.com/dwmkerr/livedown/commit/d827fce04c99369d8b5531e1c9988d6b23784a03))
+* **landing:** system diagram + minimal chrome (bundle 2) ([#118](https://github.com/dwmkerr/livedown/issues/118)) ([31990e9](https://github.com/dwmkerr/livedown/commit/31990e9c6f59792dd33d3e315f586328dc1d44b9))
+* **landing:** unify diagram landing into public/index.html ([#124](https://github.com/dwmkerr/livedown/issues/124)) ([6efa46a](https://github.com/dwmkerr/livedown/commit/6efa46ac25787b9d96cab621f6623db9b79813e9))
+* **openspec-flow:** shim the external reusable workflow ([#123](https://github.com/dwmkerr/livedown/issues/123)) ([f876e2c](https://github.com/dwmkerr/livedown/commit/f876e2cf1777ed8b934f50824fb5eb2564a08dcd))
+
+
+### Bug Fixes
+
+* gate ANSI escapes on TTY to fix raw codes in piped output ([#116](https://github.com/dwmkerr/livedown/issues/116)) ([679f1ed](https://github.com/dwmkerr/livedown/commit/679f1ed36f37ad15fd0ce2ba06d4c9501bd9e4ac))
+
 ## [0.1.5](https://github.com/dwmkerr/livedown/compare/v0.1.4...v0.1.5) (2026-05-05)
 
 
