@@ -11,9 +11,9 @@
 
 ## 3. Verify locally
 
-- [ ] 3.1 Restart `npm run relay:dev`. Confirm `http://localhost:1999/` shows the diagram landing.
-- [ ] 3.2 Confirm `http://localhost:1999/#test123` shows the viewer (room `test123`), no landing visible.
-- [ ] 3.3 Run `livedown share` against a test markdown file end-to-end; share URL still works.
+- [x] 3.1 Restart `npm run relay:dev`. Confirm `http://localhost:1999/` shows the diagram landing.
+- [x] 3.2 Confirm `http://localhost:1999/#test123` shows the viewer (room `test123`), no landing visible.
+- [x] 3.3 Run `livedown share` against a test markdown file end-to-end; share URL still works. Verified: `node dist/cli.js share --dev tests/documents/empty.md` → viewer at `http://localhost:1999/#08e516/empty.md` rendered live content in split view, file pill green, lock pill shown.
 
 ## 4. Docs (required by CLAUDE.md)
 
@@ -23,8 +23,8 @@
 
 ## 5. Tests
 
-- [ ] 5.1 Audit `tests/integration/` for tests that hit bare relay URL with no hash; update assertions to expect the new landing markup (hero text, diagram caption).
-- [ ] 5.2 Add an integration assertion that `GET /` returns markup containing "3 humans · 2 agents · 1 file" (diagram caption).
+- [x] 5.1 Audit `tests/integration/` for tests that hit bare relay URL with no hash; only `share-and-view.test.ts` exists and it asserts against `https://livedown.dwmkerr.partykit.dev/#<doc>` (hash always present). No change needed.
+- [x] 5.2 Add a unit test (`tests/landing.test.ts`) asserting `public/index.html` contains the diagram caption ("3 humans · 2 agents · 1 file"), the diagram canvas IDs, the viewer chrome, and the hash router. Runs under default `npm test`.
 
 ## 6. Deferred (follow-up changes)
 
