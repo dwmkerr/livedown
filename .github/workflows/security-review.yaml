@@ -16,7 +16,7 @@ jobs:
       # Checkout from BASE (main), not the PR branch. This ensures the
       # workflow, agent definition, and prompt all come from trusted code.
       # We only read the PR diff via gh cli — never checkout PR code.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ github.event.pull_request.base.sha }}
 
