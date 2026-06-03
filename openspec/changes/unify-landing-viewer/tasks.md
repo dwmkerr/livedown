@@ -17,9 +17,9 @@
 
 ## 4. Docs (required by CLAUDE.md)
 
-- [ ] 4.1 Update `docs/design.md` landing section to reference the diagram landing as canonical.
-- [ ] 4.2 Round-trip the design back to Claude Design canvas; export a new `design/design-bundle-N.zip` per CLAUDE.md rules.
-- [ ] 4.3 Update `README.md` "How It Works" if its landing description changed.
+- [x] 4.1 Update `docs/design.md` landing + routing sections to reference the unified `public/index.html`.
+- [ ] 4.2 Round-trip the design back to Claude Design canvas; export a new `design/design-bundle-N.zip` per CLAUDE.md rules. **Manual step — must be done by maintainer before archive.**
+- [x] 4.3 `README.md` does not describe the landing (verified via grep); no update required.
 
 ## 5. Tests
 
