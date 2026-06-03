@@ -70,7 +70,7 @@ Relay does not broadcast presence. Client derives members from messages it has s
 
 ## Landing page
 
-**Lives in `site/` — separate from the PartyKit relay deploy.** `site/index.html` is the landing page shipped to livedown.dev (the user-facing marketing surface). The relay (`public/`) hosts only the viewer and the not-found card. Keeping them split means marketing copy changes do not require a relay redeploy and vice-versa.
+**Lives in `public/index.html` alongside the viewer.** The relay serves a single static document; mode is selected from `location.hash` (no hash → landing; `#<key>` → viewer). One deploy artifact, one URL space. Previously the landing lived in a separate `site/` directory that was never wired into the partykit deploy — that orphan is gone.
 
 Content (dark Catppuccin chrome, follows design bundle hero). Page flow: hero → system diagram → commit ritual → security → footer.
 
@@ -81,13 +81,13 @@ Content (dark Catppuccin chrome, follows design bundle hero). Page flow: hero �
 - **Security** — "Three layers of verification" prose + keyword chip row + layer-verifies-rejects table.
 - **Footer** — left: `livedown` wordmark linking to the GitHub repo. Right: `docs` · `github`. No MIT line, no author byline, no npm link — discovery routes through GitHub.
 
-## Three-state routing
+## Routing
 
-- **livedown.dev** (`site/`) — landing. No hash needed. Acts as the share-link target as well: a share URL of the form `https://livedown.dev/#<room>` is parsed by the viewer (`public/`) once the host points there, so the landing has no "Join a room" affordance — pasting any livedown URL into the browser address bar is the join path.
-- **partykit.dev/#<doc>** (`public/`) — viewer. Client reads hash and opens WS. States: `loading` → `live` | `offline` | `notfound`.
-- **partykit.dev** with no hash, or `notfound` after WS confirms no sharer ever — inline not-found card (dark surface, error heading, install command, primary CTA back to livedown.dev, secondary GitHub link). No separate file.
+Single document (`public/index.html`) served at every path. Client routes by `location.hash`:
 
-The old bundled landing that lived inside `public/index.html` is gone.
+- **`/`** — landing. Diagram-centric marketing page. No "Join a room" affordance — pasting any livedown URL into the address bar is the join path. `hashchange` triggers a reload to swap into viewer mode (in-place swap is a follow-up gated on async viewer init).
+- **`/#<doc>`** — viewer. Client reads hash and opens WS. States: `loading` → `live` | `offline` | `notfound`.
+- **`notfound`** after WS confirms no sharer ever — inline not-found card (dark surface, error heading, install command, primary CTA back to landing, secondary GitHub link).
 
 ## Source of truth
 
