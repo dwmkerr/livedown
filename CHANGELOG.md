@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.7](https://github.com/dwmkerr/livedown/compare/v0.1.6...v0.1.7) (2026-06-03)
+
+
+### Continuous Integration
+
+* bump codecov-action to v6, release-please-action to v5 ([#127](https://github.com/dwmkerr/livedown/issues/127)) ([fa40181](https://github.com/dwmkerr/livedown/commit/fa401811e3b4667aed9ca4a6fa35bd0206eea6d3))
+
 ## [0.1.6](https://github.com/dwmkerr/livedown/compare/v0.1.5...v0.1.6) (2026-06-03)
 
 

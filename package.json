@@ -1,6 +1,6 @@
 {
   "name": "@dwmkerr/livedown",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "Share a local markdown file and collaborate live in a browser and across machines.",
   "type": "commonjs",
   "main": "./dist/cli.js",
