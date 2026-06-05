@@ -1,3 +1,7 @@
+<!-- openspec-flow badge-start -->
+[![openspec-flow](https://github.com/dwmkerr/livedown/actions/workflows/openspec-flow.yml/badge.svg)](https://github.com/dwmkerr/livedown/actions/workflows/openspec-flow.yml)
+<!-- openspec-flow badge-end -->
+
 <p align="center">
   <h2 align="center"><code>📝 livedown</code></h2>
   <h3 align="center">Share a local markdown file and collaborate live in a browser and across machines.</h3>
