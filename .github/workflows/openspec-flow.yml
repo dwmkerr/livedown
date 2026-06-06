@@ -30,6 +30,7 @@ jobs:
     uses: dwmkerr/openspec-flow/.github/workflows/openspec-flow.yml@main
     with:
       broker_url: 'https://openspec-flow-dev.fly.dev'
+      broker_audience: 'openspec-flow-dev'
     secrets:
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       OPENSPEC_FLOW_APP_ID: ${{ secrets.OPENSPEC_FLOW_APP_ID || '' }}
