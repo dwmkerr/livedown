@@ -18,6 +18,7 @@
 - [ ] 3.3 Add `docker/metadata-action@v5` step with `images: ghcr.io/dwmkerr/livedown` and tag rules `type=semver,pattern={{version}},value=${{ inputs.ref || github.ref_name }}` plus `type=raw,value=latest`. Capture its `tags` and `labels` outputs.
 - [ ] 3.4 Call `uses: ./.github/actions/docker-build` with `push: 'true'`, `tags: ${{ steps.meta.outputs.tags }}`, `labels: ${{ steps.meta.outputs.labels }}`, `registry-username: ${{ github.actor }}`, `registry-password: ${{ secrets.GITHUB_TOKEN }}`.
 - [ ] 3.5 Add a final smoke-test step: `docker buildx imagetools inspect "ghcr.io/dwmkerr/livedown:${{ steps.meta.outputs.version }}"` and grep for both `linux/amd64` and `linux/arm64` in the output; fail the job if either is missing.
+- [ ] 3.5b After the `imagetools inspect` step, add a `uses: ./.github/actions/docker-smoke-test` step that passes `image: ghcr.io/dwmkerr/livedown` and `version: ${{ steps.meta.outputs.version }}`. This wires in the CLI smoke action shipped by the `docker-image-cli-smoke-test` change so the release fails fast if the published image's entrypoint cannot print `--help`. The composite action MUST be the final step of the job so the job's success reflects "image is published AND invokable".
 - [ ] 3.6 Add an inline comment near the metadata step warning that manual dispatch with a non-tag `ref` will produce only the `:latest` tag (semver pattern matches nothing).
 
 ## 4. README
@@ -35,4 +36,4 @@
 
 - [ ] 6.1 After the first successful `deploy-docker` run, flip the `ghcr.io/dwmkerr/livedown` package visibility to "Public" in the GHCR UI (one-time setting; subsequent releases inherit it).
 - [ ] 6.2 Verify the published manifest from a clean machine: `docker buildx imagetools inspect ghcr.io/dwmkerr/livedown:latest` lists both arches.
-- [ ] 6.3 Verify the smoke run: on an arm64 host, `docker run --rm ghcr.io/dwmkerr/livedown:latest --help` prints CLI usage with no emulation warning.
+- [ ] 6.3 ~~Verify the smoke run: on an arm64 host, `docker run --rm ghcr.io/dwmkerr/livedown:latest --help` prints CLI usage with no emulation warning.~~ **Superseded by `docker-image-cli-smoke-test`**, which automates the amd64 `--help` check inside `deploy-docker` via the `./.github/actions/docker-smoke-test` composite action. The arm64-native variant remains useful as a one-time post-public-flip sanity pass but is no longer a recurring per-release manual task.

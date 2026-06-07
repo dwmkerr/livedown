@@ -1,0 +1,82 @@
+# docker-smoke-test — invoke `--help` on a published image and assert
+# the CLI prints a recognisable usage line.
+#
+# Lives as a composite action so the `deploy-docker` job in deploy.yaml
+# (added by the multi-arch-docker-image change) can call it after the
+# `docker buildx imagetools inspect` step, without duplicating the shell
+# logic inline. Per CLAUDE.md's GitHub workflow rules, composite actions
+# are the GitHub-native unit of reuse and are preferred over inline blocks
+# or shell scripts under `.github/workflows/scripts/`.
+#
+# Why a smoke step at all: `imagetools inspect` confirms the manifest
+# lists both `linux/amd64` and `linux/arm64`, but it does not invoke the
+# image's entrypoint. A broken `dist/cli.js`, a mis-pruned `node_modules`,
+# or a bad `WORKDIR` would publish a manifest that looks right but fails
+# at runtime. Pulling the just-published tag and running `--help` catches
+# that class of regression before the release is treated as good.
+#
+# Why amd64 only: the Dockerfile bakes the same `dist/` and `node_modules`
+# into both arches; emulating arm64 via QEMU just to print a usage string
+# adds minutes per release for zero extra coverage. The explicit
+# `--platform linux/amd64` flag is for future-proofing if the runner ever
+# moves to arm64 — the smoke target stays the same.
+
+name: docker-smoke-test
+description: |
+  Pull a published image by version tag and assert that `--help` exits 0
+  and prints a recognisable usage line. Used by the release deploy
+  pipeline to catch broken entrypoints before treating a release as good.
+
+inputs:
+  image:
+    description: "Image repository (without tag). Example: ghcr.io/dwmkerr/livedown"
+    required: true
+  version:
+    description: "Resolved version tag to pull. Example: 1.2.3 (NOT 'latest' — see design decision §4)"
+    required: true
+  platform:
+    description: "Platform to pull. Defaults to linux/amd64; only override if testing a non-amd64 runner deliberately."
+    required: false
+    default: linux/amd64
+  usage-marker:
+    description: "Fixed-string marker that MUST appear in `--help` output. Default 'Usage:' matches commander's standard usage line."
+    required: false
+    default: "Usage:"
+
+runs:
+  using: composite
+  steps:
+    # Capture stdout to a file rather than piping into grep inline.
+    # Inline `docker run … | grep …` is fragile under shell quoting
+    # (the design doc's Risks section calls this out explicitly).
+    # Writing to RUNNER_TEMP keeps the output available for the diagnostic
+    # dump on failure.
+    - name: Run --help against published image
+      shell: bash
+      env:
+        IMAGE: ${{ inputs.image }}
+        VERSION: ${{ inputs.version }}
+        PLATFORM: ${{ inputs.platform }}
+      run: |
+        set -euo pipefail
+        out="$RUNNER_TEMP/cli-help.txt"
+        echo "Pulling and running ${IMAGE}:${VERSION} on ${PLATFORM}…"
+        docker run --rm --platform "$PLATFORM" "${IMAGE}:${VERSION}" --help \
+          > "$out"
+        echo "Captured $(wc -l < "$out") line(s) of --help output to $out"
+
+    - name: Assert usage marker present
+      shell: bash
+      env:
+        MARKER: ${{ inputs.usage-marker }}
+      run: |
+        set -euo pipefail
+        out="$RUNNER_TEMP/cli-help.txt"
+        if ! grep -qF "$MARKER" "$out"; then
+          echo "::error::CLI smoke test failed: marker '$MARKER' not found in --help output."
+          echo "::group::Captured --help output"
+          cat "$out" || echo "(no output captured)"
+          echo "::endgroup::"
+          exit 1
+        fi
+        echo "Smoke test passed: '$MARKER' found in --help output."

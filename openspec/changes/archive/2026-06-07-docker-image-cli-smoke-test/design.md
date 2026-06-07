@@ -39,6 +39,25 @@ The step is added at the end of the `deploy-docker` job, after the existing `ima
 
 **Alternative:** a separate `verify-docker` job with `needs: [deploy-docker]`. Rejected — extra runner, longer wall time, no isolation benefit.
 
+### 1a. Smoke logic lives in a composite action, not an inline `run:` block
+
+The shell logic (write `--help` to a temp file, `grep` for the usage marker, dump on failure) is encapsulated in `.github/actions/docker-smoke-test/action.yml`. The `deploy-docker` job calls it with `uses: ./.github/actions/docker-smoke-test` after the inspect step, passing the image repo and resolved version as inputs.
+
+This is required, not optional, per the repo's `CLAUDE.md` rule #1 ("Duplicative content is a bug … extract **before** the second copy is written") and rule #2 ("Prefer composite actions over shell scripts under `.github/workflows/scripts/`"). Even though there is only one caller today, the composite form keeps the shell logic out of the YAML and makes it independently reviewable, testable (`act` can dry-run an action), and reusable if the same smoke pattern is ever needed in another workflow (e.g., a hypothetical future `:main` tag verifier).
+
+**Alternative:** inline `run: \|` block inside `deploy-docker`. Rejected — pushes shell into YAML, harder to read, can't be reused, violates the project's "extract before the second copy" guidance.
+
+**Alternative:** shell script under `.github/workflows/scripts/`. Rejected per `CLAUDE.md` rule #2.
+
+### 1b. Coordination with the `multi-arch-docker-image` change
+
+`docker-image-cli-smoke-test` ships the composite action (`.github/actions/docker-smoke-test/`); `multi-arch-docker-image` ships the `deploy-docker` job that hosts the publish + inspect + smoke sequence. The wire-up (the `uses: ./.github/actions/docker-smoke-test` call in `deploy-docker`) lives in `multi-arch-docker-image`'s tasks, not here, because:
+
+- Adding the wire-up here would require this change to also create the `deploy-docker` job (since it does not exist on `main` yet), which scope-creeps into the dependency's territory.
+- Adding a no-op `deploy-docker` stub here would leave a broken workflow file (a smoke step against an image that nothing in the workflow publishes) on `main` between the two merges.
+
+Therefore, `multi-arch-docker-image`'s task list is amended in this change to call the composite action as the final step of `deploy-docker`, immediately after `imagetools inspect`. Whichever change merges second resolves the now-trivial coordination: the composite action and the `uses:` call land together.
+
 ### 2. Pull explicitly with `--platform linux/amd64`
 
 The runner is amd64. Without `--platform`, `docker run` would pull the host arch's image, which is what we want anyway. The explicit flag is for **future-proofing**: if we later move `deploy-docker` to a different runner type (e.g., a self-hosted arm64 box), the smoke step should still target amd64 unless someone deliberately changes it. Making the platform explicit also makes the log line self-documenting about what was tested.
@@ -46,6 +65,8 @@ The runner is amd64. Without `--platform`, `docker run` would pull the host arch
 ### 3. Assertion on stdout substring, not exit code alone
 
 `docker run … --help` exits 0 on success. Asserting `exit 0` is necessary but not sufficient — a broken entrypoint could `exec` something that prints nothing and exits 0 (e.g., a wrapper script with a typo). We grep the captured stdout for the substring `Usage:` (the `commander` library's standard usage-line marker, which `cli.ts` inherits).
+
+The composite action uses `grep -qF` (fixed-string, quiet) so the marker is matched literally and the action does not depend on `grep`'s regex dialect. The default marker `Usage:` is exposed as a composite-action input (`usage-marker`) so a future caller can override it without editing the action — useful if we ever swap `commander` for a CLI parser with a different usage banner.
 
 If `commander`'s help output format changes upstream, the test fails noisily — that's a deliberate canary. Better to update one grep than to ship an image whose CLI is silently broken.
 
