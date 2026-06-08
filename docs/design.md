@@ -47,7 +47,7 @@ Update this doc when the design intent changes. Code that diverges from it is a 
 ## Mode semantics
 
 - `preview` — rendered pane full width (reader primary).
-- `split`   — source (dark) left, rendered (light) right, draggable divider.
+- `split`   — source (dark) left, rendered (light) right, draggable divider. The two scroll positions are kept synchronised in both directions: scrolling the CodeMirror source pane scrolls the preview so the topmost visible source line lines up with its rendered block, and scrolling the preview pulls the source back to the matching line. The mapping is best-effort line-to-block — rendered blocks carry a `data-source-line` attribute that the viewer reads on every re-render. Sync is loop-free (a re-entrancy guard suppresses programmatic-scroll echoes) and is suspended outside split mode.
 - `code`    — source full width.
 
 Switching never changes the header. Header owns identity and controls; body owns content.
