@@ -21,6 +21,7 @@
     <a href="https://github.com/dwmkerr/livedown/actions/workflows/openspec-flow.yaml"><img src="https://github.com/dwmkerr/livedown/actions/workflows/openspec-flow.yml/badge.svg" alt="openspec flow"></a>
     <a href="https://www.npmjs.com/package/@dwmkerr/livedown"><img src="https://img.shields.io/npm/v/%40dwmkerr/livedown" alt="npm version"></a>
     <a href="https://codecov.io/gh/dwmkerr/livedown"><img src="https://codecov.io/gh/dwmkerr/livedown/graph/badge.svg" alt="codecov"></a>
+    <a href="https://github.com/sponsors/dwmkerr?frequency=one-time"><img src="https://img.shields.io/badge/thanks-buy%20me%20a%20coffee-ea4aaa?logo=githubsponsors&logoColor=white" alt="Buy me a coffee"></a>
   </p>
 </p>
 
