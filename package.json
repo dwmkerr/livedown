@@ -72,5 +72,9 @@
     "tsx": "^4.21.0",
     "typescript": "^5.3.3",
     "typescript-eslint": "^8.57.2"
+  },
+  "funding": {
+    "type": "github",
+    "url": "https://github.com/sponsors/dwmkerr"
   }
 }
