@@ -1452,9 +1452,18 @@
 
   // ── Mode toggle (Code / Split / Preview) ─────────────────────
   const panes = document.getElementById('panes');
+  const paneSource = document.getElementById('pane-source');
+  const panePreview = document.getElementById('pane-preview');
   const modeToggle = document.getElementById('mode-toggle');
   const STORED_MODE = 'livedown:mode';
   const initialMode = localStorage.getItem(STORED_MODE) || 'split';
+
+  // Sync-scroll state — populated by renderPreview and consumed by the
+  // scroll handlers attached in split mode (see "Sync scrolling" below).
+  var lineToBlock = [];
+  var syncingFrom = null;       // 'source' | 'preview' | null
+  var syncClearTimer = null;
+
   function applyMode(mode) {
     panes.dataset.mode = mode;
     modeToggle.querySelectorAll('.mode-btn').forEach(function (b) {
@@ -1462,6 +1471,8 @@
     });
     localStorage.setItem(STORED_MODE, mode);
     if (cm) setTimeout(() => cm.refresh(), 0);
+    if (mode === 'split') attachSyncScroll();
+    else detachSyncScroll();
   }
   applyMode(initialMode);
   modeToggle.addEventListener('click', function (e) {
@@ -1545,10 +1556,215 @@
     if (e.key === 'Enter') viewSubmit.click();
   });
 
+  // ── Sync scrolling ───────────────────────────────────────────
+  // In split mode the source and preview scroll positions are kept aligned
+  // in both directions. Each render stamps block-level elements with a
+  // `data-source-line` attribute; we read those positions into `lineToBlock`
+  // and map between source line and preview scrollTop via linear
+  // interpolation. `syncingFrom` is the re-entrancy guard so a programmatic
+  // scroll on one side does not echo back and drive the other. See
+  // openspec/changes/issue-114-feat-ui-synchronise-scrolling/design.md.
+
+  function rebuildLineIndex() {
+    var inner = document.getElementById('preview-inner');
+    lineToBlock = [];
+    if (!inner || !panePreview) return;
+    var paneTop = panePreview.getBoundingClientRect().top;
+    var paneScrollTop = panePreview.scrollTop;
+    var children = inner.children;
+    for (var i = 0; i < children.length; i++) {
+      var el = children[i];
+      var attr = el.getAttribute('data-source-line');
+      if (attr == null) continue;
+      var line = parseInt(attr, 10);
+      if (isNaN(line)) continue;
+      var rect = el.getBoundingClientRect();
+      var top = rect.top - paneTop + paneScrollTop;
+      lineToBlock.push({ line: line, top: top, height: rect.height });
+    }
+    lineToBlock.sort(function (a, b) { return a.line - b.line; });
+  }
+
+  function sourceLineToPreviewTop(srcLine) {
+    if (!lineToBlock.length) return 0;
+    if (lineToBlock[0].line > srcLine) return 0;
+    var lo = 0, hi = lineToBlock.length - 1, anchorIdx = 0;
+    while (lo <= hi) {
+      var mid = (lo + hi) >> 1;
+      if (lineToBlock[mid].line <= srcLine) { anchorIdx = mid; lo = mid + 1; }
+      else { hi = mid - 1; }
+    }
+    var a = lineToBlock[anchorIdx];
+    var n = lineToBlock[anchorIdx + 1];
+    if (!n) return a.top;
+    var span = n.line - a.line;
+    if (span <= 0) return a.top;
+    var t = (srcLine - a.line) / span;
+    if (t < 0) t = 0; else if (t > 1) t = 1;
+    return a.top + t * ((n.top + n.height) - a.top);
+  }
+
+  function previewTopToSourceLine(scrollTop) {
+    if (!lineToBlock.length) return 0;
+    if (lineToBlock[0].top > scrollTop) return lineToBlock[0].line;
+    var lo = 0, hi = lineToBlock.length - 1, anchorIdx = 0;
+    while (lo <= hi) {
+      var mid = (lo + hi) >> 1;
+      if (lineToBlock[mid].top <= scrollTop) { anchorIdx = mid; lo = mid + 1; }
+      else { hi = mid - 1; }
+    }
+    var a = lineToBlock[anchorIdx];
+    var n = lineToBlock[anchorIdx + 1];
+    if (!n) return a.line;
+    var span = (n.top + n.height) - a.top;
+    if (span <= 0) return a.line;
+    var t = (scrollTop - a.top) / span;
+    if (t < 0) t = 0; else if (t > 1) t = 1;
+    return Math.round(a.line + t * (n.line - a.line));
+  }
+
+  function scheduleSyncClear() {
+    if (syncClearTimer) clearTimeout(syncClearTimer);
+    syncClearTimer = setTimeout(function () {
+      syncingFrom = null;
+      syncClearTimer = null;
+    }, 100);
+  }
+
+  function onSourceScroll() {
+    // Echo of a preview-driven write. Clear the token on the next tick so a
+    // subsequent real user scroll on the source side is honoured.
+    if (syncingFrom === 'preview') {
+      setTimeout(function () { syncingFrom = null; }, 0);
+      return;
+    }
+    if (!lineToBlock.length) return;
+    var info = cm.getScrollInfo();
+    var line = cm.lineAtHeight(info.top, 'local');
+    var target = sourceLineToPreviewTop(line);
+    requestAnimationFrame(function () {
+      syncingFrom = 'source';
+      panePreview.scrollTop = target;
+      scheduleSyncClear();
+    });
+  }
+
+  function onPreviewScroll() {
+    if (syncingFrom === 'source') {
+      setTimeout(function () { syncingFrom = null; }, 0);
+      return;
+    }
+    if (!lineToBlock.length) return;
+    var top = panePreview.scrollTop;
+    var srcLine = previewTopToSourceLine(top);
+    requestAnimationFrame(function () {
+      syncingFrom = 'preview';
+      var coords = cm.charCoords({ line: srcLine, ch: 0 }, 'local');
+      cm.scrollTo(null, coords.top);
+      scheduleSyncClear();
+    });
+  }
+
+  function attachSyncScroll() {
+    if (!cm || !panePreview) return;
+    // Defensive: detach first so repeated attach calls don't stack listeners.
+    cm.off('scroll', onSourceScroll);
+    panePreview.removeEventListener('scroll', onPreviewScroll);
+    cm.on('scroll', onSourceScroll);
+    panePreview.addEventListener('scroll', onPreviewScroll, { passive: true });
+    // Layout for the just-shown preview pane needs to be measured fresh.
+    rebuildLineIndex();
+    // One immediate source → preview sync so the panes align as split opens.
+    onSourceScroll();
+  }
+
+  function detachSyncScroll() {
+    if (cm) cm.off('scroll', onSourceScroll);
+    if (panePreview) panePreview.removeEventListener('scroll', onPreviewScroll);
+    syncingFrom = null;
+    if (syncClearTimer) { clearTimeout(syncClearTimer); syncClearTimer = null; }
+  }
+
   // ── Render preview ───────────────────────────────────────────
+  // Block-level elements are stamped with `data-source-line="<n>"` (0-indexed)
+  // so the sync controller can translate between source position and rendered
+  // block position. We pre-walk the lexer output to attach __sourceLine onto
+  // each top-level token, then run marked.parser with a renderer that copies
+  // the line onto the opening tag of each block.
+  var sourceLineRenderer = (function () {
+    var r = new marked.Renderer();
+    var orig = {
+      paragraph:  r.paragraph,
+      heading:    r.heading,
+      list:       r.list,
+      blockquote: r.blockquote,
+      code:       r.code,
+      table:      r.table,
+      hr:         r.hr,
+    };
+    function stamp(html, tagName, line) {
+      if (line == null) return html;
+      var re = new RegExp('^<' + tagName + '(?=[\\s>])');
+      return html.replace(re, '<' + tagName + ' data-source-line="' + line + '"');
+    }
+    r.paragraph = function (token) {
+      return stamp(orig.paragraph.call(this, token), 'p', token.__sourceLine);
+    };
+    r.heading = function (token) {
+      return stamp(orig.heading.call(this, token), 'h' + token.depth, token.__sourceLine);
+    };
+    r.list = function (token) {
+      return stamp(orig.list.call(this, token), token.ordered ? 'ol' : 'ul', token.__sourceLine);
+    };
+    r.blockquote = function (token) {
+      return stamp(orig.blockquote.call(this, token), 'blockquote', token.__sourceLine);
+    };
+    r.code = function (token) {
+      return stamp(orig.code.call(this, token), 'pre', token.__sourceLine);
+    };
+    r.table = function (token) {
+      return stamp(orig.table.call(this, token), 'table', token.__sourceLine);
+    };
+    r.hr = function (token) {
+      return stamp(orig.hr.call(this, token), 'hr', token.__sourceLine);
+    };
+    return r;
+  })();
+
+  function annotateTokenLines(content, tokens) {
+    // Walk top-level tokens in document order, finding each raw chunk inside
+    // `content` and recording the 0-indexed start line as `__sourceLine`.
+    var line = 0;
+    var pos = 0;
+    for (var i = 0; i < tokens.length; i++) {
+      var t = tokens[i];
+      if (typeof t.raw !== 'string' || t.raw.length === 0) continue;
+      var idx = content.indexOf(t.raw, pos);
+      if (idx < 0) continue;
+      for (var k = pos; k < idx; k++) {
+        if (content.charCodeAt(k) === 10) line++;
+      }
+      t.__sourceLine = line;
+      for (var j = 0; j < t.raw.length; j++) {
+        if (t.raw.charCodeAt(j) === 10) line++;
+      }
+      pos = idx + t.raw.length;
+    }
+  }
+
   function renderPreview(content) {
     var inner = document.getElementById('preview-inner');
-    inner.innerHTML = marked.parse(content || '');
+    var src = content || '';
+
+    if (!src) {
+      inner.innerHTML = '';
+      lineToBlock = [];
+      return;
+    }
+
+    var tokens = marked.lexer(src);
+    annotateTokenLines(src, tokens);
+    inner.innerHTML = marked.parser(tokens, { renderer: sourceLineRenderer });
 
     var codeBlocks = inner.querySelectorAll('pre > code.language-mermaid');
     codeBlocks.forEach(function (code) {
@@ -1556,6 +1772,10 @@
       var div = document.createElement('div');
       div.className = 'mermaid';
       div.textContent = code.textContent;
+      // Preserve the source-line anchor across the mermaid swap so the index
+      // still resolves to the rendered block after replacement.
+      var srcLine = pre.getAttribute('data-source-line');
+      if (srcLine != null) div.setAttribute('data-source-line', srcLine);
       pre.parentNode.replaceChild(div, pre);
     });
 
@@ -1563,16 +1783,21 @@
       window.mermaid.run({ querySelector: '.mermaid' }).catch(function () {
         inner.querySelectorAll('.mermaid').forEach(function (el) {
           if (!el.querySelector('svg')) {
-            var src = el.textContent;
+            var srcText = el.textContent;
             el.innerHTML = '';
             var errBox = document.createElement('div');
             errBox.className = 'mermaid-error';
-            errBox.textContent = src;
+            errBox.textContent = srcText;
             el.appendChild(errBox);
           }
         });
+      }).then(function () {
+        // Mermaid SVGs change block heights; rebuild once layout settles.
+        rebuildLineIndex();
       });
     }
+
+    rebuildLineIndex();
   }
 
   // ── Remote update flash ──────────────────────────────────────
@@ -1758,9 +1983,9 @@
   }, 5000);
 
   // ── Draggable divider ────────────────────────────────────────
-  const divider     = document.getElementById('divider');
-  const paneSource  = document.getElementById('pane-source');
-  const panePreview = document.getElementById('pane-preview');
+  // paneSource and panePreview are declared up in the "Mode toggle" section
+  // so the sync-scroll controller can attach scroll listeners to them.
+  const divider = document.getElementById('divider');
   let dragging = false, startX = 0, startW = 0;
 
   divider.addEventListener('mousedown', (e) => {
