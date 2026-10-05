@@ -98,6 +98,8 @@ Refresh by re-exporting from the canvas and dropping a new `design-bundle-N.zip`
 ## Follow-ons
 
 - **CLI terminal chrome.** Design bundle includes a richer terminal surface for `livedown share` output (framed pane, colored status lines, keybind hints). Not implemented yet — current CLI prints the legacy format. Parked until the viewer and landing are locked in.
+  `livedown view` reuses the same legacy two-line format, so it inherits
+  whatever this follow-on lands.
 
 ## Changing the design
 

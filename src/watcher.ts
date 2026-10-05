@@ -136,9 +136,14 @@ export function startWatcher(
         }
         if (msg.type !== "update") return;
 
-        // Verify signature before writing to disk
-        if (msg.signature && publicKey) {
-          if (!verifySignature(msg.content || "", msg.signature, publicKey)) {
+        // Verify before writing to disk. Unconditional on purpose: gating this
+        // on a signature being present would let anyone who can reach the room
+        // skip it simply by omitting the field.
+        if (publicKey) {
+          if (
+            !msg.signature ||
+            !verifySignature(msg.content || "", msg.signature, publicKey)
+          ) {
             log(`  ${red("✗ Rejected update — invalid signature")}`);
             return;
           }

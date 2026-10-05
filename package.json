@@ -10,6 +10,8 @@
   "scripts": {
     "build": "tsc && chmod +x dist/cli.js",
     "build:watch": "tsc -w",
+    "vendor": "./scripts/vendor-assets.sh",
+    "verify:view": "npm run build && node scripts/verify-view.js",
     "dev": "tsx watch src/cli.ts",
     "relay:dev": "partykit dev --port 1999",
     "start": "ts-node ./src/cli.ts",
