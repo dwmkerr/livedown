@@ -4,6 +4,7 @@ const { spawn } = require("child_process");
 const fs = require("fs");
 const http = require("http");
 const WebSocket = require("ws");
+const matter = require("gray-matter");
 const os = require("os");
 const path = require("path");
 
@@ -227,6 +228,27 @@ const get = (p) =>
     "survives malformed websocket messages",
     cli.exitCode === null,
     `exit ${cli.exitCode}`
+  );
+
+  // --- frontmatter from the wire must not inject YAML keys ---
+  ws.send(
+    JSON.stringify({
+      type: "push",
+      content: "# Body\n",
+      meta: {
+        owner: 'x"\nmalicious_key: injected\nowner2: "y',
+        title: "t",
+        editor: "guest-1",
+      },
+    })
+  );
+  await sleep(1200);
+  const fm = fs.readFileSync(FILE, "utf8");
+  const keys = Object.keys(matter(fm).data);
+  check(
+    "frontmatter injection is escaped, not expanded",
+    !keys.includes("malicious_key") && keys.includes("owner"),
+    keys.join(",")
   );
 
   // --- no echo loop ---

@@ -9,6 +9,7 @@
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <script src="/vendor/marked.min.js"></script>
   <script src="/vendor/nacl-fast.min.js"></script>
+  <script src="/vendor/purify.min.js"></script>
   <link  rel="stylesheet" href="/vendor/codemirror/codemirror.min.css">
   <script src="/vendor/codemirror/codemirror.min.js"></script>
   <script src="/vendor/codemirror/markdown.min.js"></script>
@@ -1568,7 +1569,14 @@
 
   function renderPreview(content) {
     var inner = document.getElementById('preview-inner');
-    inner.innerHTML = marked.parse(content || '');
+    // marked does not sanitize, and the document may be one the user did not
+    // write - `livedown view ./README.md` on a freshly cloned repo is the
+    // normal case. Without this an <img onerror> runs in the page's own origin.
+    inner.innerHTML = DOMPurify.sanitize(marked.parse(content || ''), {
+      // mermaid fences arrive as <pre><code class="language-mermaid">, and the
+      // block below reads that class to find them.
+      ADD_ATTR: ['class'],
+    });
 
     var codeBlocks = inner.querySelectorAll('pre > code.language-mermaid');
     codeBlocks.forEach(function (code) {

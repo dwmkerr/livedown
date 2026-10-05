@@ -37,7 +37,7 @@ The relay does not persist data. Rooms exist only while connections are active. 
 | **CLI + Watcher** | `src/cli.ts`, `src/watcher.ts` | Node.js | tweetnacl |
 | **Relay** | `src/party/livedown.ts` | Cloudflare Workers (PartyKit) | @noble/curves |
 | **Local Server** | `src/local-server.ts` | Node.js | none (see below) |
-| **Browser Viewer** | `public/index.html` | Browser | tweetnacl (vendored) |
+| **Browser Viewer** | `public/index.html` | Browser | tweetnacl + DOMPurify (vendored) |
 
 
 ## Journeys
@@ -319,6 +319,11 @@ Every push message is signed with the private key. Three independent verificatio
 | **Watcher** | Private key (derives public key) | Signature on **every** incoming update | Forged *and unsigned* updates are never written to disk |
 | **Browser** | Public key (from relay) | Edit key matches public key on entry | Wrong key is rejected before any push |
 
+Frontmatter values arrive over the wire, so the watcher serializes them with
+gray-matter rather than building YAML by hand. Hand-built YAML let a value
+containing a quote and a newline close its own field and append further
+top-level keys to the user's file.
+
 A compromised relay still cannot forge updates that the local watcher would accept - the watcher re-verifies every signature before writing to disk. The check is unconditional: an update carrying no signature at all is rejected, so the relay cannot bypass verification by simply omitting the field.
 
 ### Local mode (`livedown view`)
@@ -345,9 +350,10 @@ Three properties are easy to get wrong and are worth stating outright:
   chrome, or it leaks into every screenshot - the header shows the filename
   only.
 
-The page is served with a restrictive `Content-Security-Policy`, because
-`renderPreview` puts markdown through `innerHTML` and the file may be one the
-user did not write.
+Rendered markdown is sanitized with **DOMPurify** before it reaches
+`innerHTML`, and the page is served with a restrictive
+`Content-Security-Policy`. `marked` does not sanitize, and `livedown view` is
+normally pointed at a file the user did not write.
 
 `scripts/verify-view.js` covers all of the above as regression tests.
 

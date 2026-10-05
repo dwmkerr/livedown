@@ -20,6 +20,7 @@ VENDOR="public/vendor"
 CODEMIRROR_VERSION="5.65.17"
 MARKED_VERSION="15.0.12"
 TWEETNACL_VERSION="1.0.3"
+DOMPURIFY_VERSION="3.4.16"
 
 mkdir -p "$VENDOR/codemirror"
 
@@ -34,6 +35,8 @@ fetch "https://cdn.jsdelivr.net/npm/marked@${MARKED_VERSION}/marked.min.js" \
       "$VENDOR/marked.min.js"
 fetch "https://cdn.jsdelivr.net/npm/tweetnacl@${TWEETNACL_VERSION}/nacl-fast.min.js" \
       "$VENDOR/nacl-fast.min.js"
+fetch "https://cdn.jsdelivr.net/npm/dompurify@${DOMPURIFY_VERSION}/dist/purify.min.js" \
+      "$VENDOR/purify.min.js"
 fetch "https://cdnjs.cloudflare.com/ajax/libs/codemirror/${CODEMIRROR_VERSION}/codemirror.min.css" \
       "$VENDOR/codemirror/codemirror.min.css"
 fetch "https://cdnjs.cloudflare.com/ajax/libs/codemirror/${CODEMIRROR_VERSION}/codemirror.min.js" \
