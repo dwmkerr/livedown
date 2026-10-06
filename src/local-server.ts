@@ -164,25 +164,41 @@ class Room {
   }
 }
 
-// Absolute paths of everything under public/, keyed by the URL that serves it,
-// resolved once at startup. Serving from this map means a request path is only
-// ever a lookup key: no part of it reaches the filesystem, so traversal and
-// symlink escape are impossible by construction rather than by validation.
-function buildServableFiles(dir: string, prefix = ""): Map<string, string> {
-  const files = new Map<string, string>();
+interface ServableFile {
+  body: Buffer;
+  type: string;
+}
+
+// public/ is read into memory once, keyed by the URL that serves it. A request
+// path is then only ever a lookup key and never reaches the filesystem, so
+// traversal and symlink escape are impossible by construction rather than by
+// validation. public/ is a handful of static files, so the memory cost is
+// trivial and every request avoids a disk read.
+//
+// The consequence is that `livedown view` serves the viewer as it was at
+// startup. Iterating on public/index.html is done against `npm run relay:dev`,
+// which serves it from PartyKit with caching disabled.
+function loadServableFiles(
+  dir: string,
+  prefix = ""
+): Map<string, ServableFile> {
+  const files = new Map<string, ServableFile>();
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     const abs = path.join(dir, entry.name);
     const url = `${prefix}/${entry.name}`;
     if (entry.isDirectory()) {
-      for (const [k, v] of buildServableFiles(abs, url)) files.set(k, v);
+      for (const [k, v] of loadServableFiles(abs, url)) files.set(k, v);
     } else if (entry.isFile()) {
-      files.set(url, abs);
+      files.set(url, {
+        body: fs.readFileSync(abs),
+        type: MIME[path.extname(entry.name)] || "application/octet-stream",
+      });
     }
   }
   return files;
 }
 
-const SERVABLE = buildServableFiles(PUBLIC_DIR);
+const SERVABLE = loadServableFiles(PUBLIC_DIR);
 
 function serveStatic(
   req: http.IncomingMessage,
@@ -199,19 +215,13 @@ function serveStatic(
     return;
   }
 
-  fs.readFile(file, (err, body) => {
-    if (err) {
-      res.writeHead(404).end("Not found");
-      return;
-    }
-    res.writeHead(200, {
-      "Content-Type": MIME[path.extname(file)] || "application/octet-stream",
-      "Content-Security-Policy": CSP,
-      "X-Content-Type-Options": "nosniff",
-      "Cache-Control": "no-store",
-    });
-    res.end(body);
+  res.writeHead(200, {
+    "Content-Type": file.type,
+    "Content-Security-Policy": CSP,
+    "X-Content-Type-Options": "nosniff",
+    "Cache-Control": "no-store",
   });
+  res.end(file.body);
 }
 
 export function startLocalServer(
