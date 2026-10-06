@@ -300,7 +300,7 @@ const program = new Command();
 program
   .name("livedown")
   .description(
-    "Share a local markdown file and collaborate live in a browser and across machines."
+    "View and edit a local markdown file in your browser, or share it for live collaboration."
   )
   .version(pkg.version)
   // Accept --dev at the root so either argument order works:
