@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.8](https://github.com/dwmkerr/livedown/compare/v0.1.7...v0.1.8) (2026-10-06)
+
+
+### Features
+
+* add livedown view for local-only markdown viewing ([#147](https://github.com/dwmkerr/livedown/issues/147)) ([05413cd](https://github.com/dwmkerr/livedown/commit/05413cd418e0a959c357ebf67b87daab49df88a3))
+* **ci:** add docker-smoke-test composite action for published image CLI ([#138](https://github.com/dwmkerr/livedown/issues/138)) ([027cc96](https://github.com/dwmkerr/livedown/commit/027cc96cb53a973fa1167410ba34b8e6f65b1c99))
+
 ## [0.1.7](https://github.com/dwmkerr/livedown/compare/v0.1.6...v0.1.7) (2026-06-03)
 
 
