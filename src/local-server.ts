@@ -18,7 +18,10 @@ const MAX_PAYLOAD = 4 * 1024 * 1024;
 const CSP = [
   "default-src 'none'",
   "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net",
-  "connect-src 'self' https://cdn.jsdelivr.net",
+  // npmjs and github are the landing page's own version and star lookups,
+  // reachable by clicking the wordmark. None of these hosts are
+  // attacker-controlled, so they are no use as an exfiltration channel.
+  "connect-src 'self' https://cdn.jsdelivr.net https://registry.npmjs.org https://api.github.com",
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   "font-src https://fonts.gstatic.com",
   "img-src 'self' data:",
