@@ -24,6 +24,10 @@
   </p>
 </p>
 
+<p align="center">
+  <img src="docs/hero.gif" alt="livedown view rendering a markdown file as it is edited" width="900">
+</p>
+
 ## Quickstart
 
 Preview and edit a file locally:
