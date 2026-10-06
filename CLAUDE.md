@@ -121,7 +121,7 @@ Or: Actions tab → `deploy` → "Run workflow".
 
 All set under repo Settings → Secrets and variables → Actions:
 
-- `NPM_TOKEN` — npm "Automation" / granular token with `package: write` on the `@dwmkerr` scope. Generate at npmjs.com → Access Tokens. Used by `deploy-npm` job in `deploy.yaml`.
+- npm needs **no secret**. The `deploy-npm` job publishes with [trusted publishing](https://docs.npmjs.com/trusted-publishers): `id-token: write` mints a short-lived OIDC token that npm exchanges at publish time. The trusted publisher is configured on npmjs.com against this repo and the workflow filename `deploy.yaml` — **renaming that file breaks publishing** until the publisher config is updated to match. There is no auth preflight, because with OIDC there is no token to check until publish runs.
 - `PARTYKIT_TOKEN` — generate with `npx partykit token generate` on a machine logged in as the relay owner (`dwmkerr`). Used by `deploy-partykit` job in `deploy.yaml`. Rotate by regenerating and pasting the new value into Actions secrets.
 - `CODECOV_TOKEN` — upload coverage from `validate` job.
 - `ANTHROPIC_API_KEY` — used by Claude-driven workflows (agent-actions, security-review, plus the external openspec-flow shim). Exactly one of `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN` should be set — **the Claude Agent SDK uses the API key when both are present** (same precedence as the local `claude` CLI). To route OAuth / subscription auth, delete the API key secret first.

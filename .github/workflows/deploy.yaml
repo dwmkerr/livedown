@@ -14,10 +14,13 @@
 #   - Manual:    `gh workflow run deploy.yaml --ref <tag>` or Actions UI.
 #
 # Secrets:
-#   NPM_TOKEN        — npm "Automation" token with write on the `@dwmkerr` scope.
 #   PARTYKIT_TOKEN   — `npx partykit token generate` on a machine logged in
 #                      as the relay owner (username must match PARTYKIT_LOGIN
 #                      below).
+#
+# npm needs no secret: publishing uses trusted publishing (OIDC), configured
+# on npmjs.com against this repo and this workflow filename. Renaming this
+# file breaks publishing until the trusted publisher is updated to match.
 
 name: deploy
 
@@ -54,16 +57,12 @@ jobs:
           cache: "npm"
       - run: npm ci
       - run: npm run build
-      # Preflight: confirm the NPM token is valid before attempting publish,
-      # so a stale/wrong token surfaces as an obvious auth failure rather than
-      # a confusing 404 on PUT.
-      - name: Preflight — npm auth
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: npm whoami
+      # Auth is npm trusted publishing: the OIDC token minted by `id-token:
+      # write` is exchanged at publish time, so there is no stored credential
+      # and nothing to rotate. There is deliberately no auth preflight — with
+      # OIDC there is no token to check until publish runs, and `npm whoami`
+      # would fail regardless.
       - name: Publish to npm
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: npm publish --provenance
 
   deploy-partykit:
