@@ -335,6 +335,7 @@ WebSocket upgrade or static response is served:
 | Check | Stops |
 |-------|-------|
 | **Bind `127.0.0.1` only** | Other machines on the network. |
+| **Static files served from a startup allowlist** | Path traversal and symlink escape. The request path is only a lookup key into a map of files resolved when the server starts, so no part of it reaches the filesystem. |
 | **Unguessable room name** (`<64-bit token>/<file>`, exact match on upgrade) | Other **processes** on the same machine. Loopback is only a machine boundary: any local UID, container on `--network host`, or WSL2 peer can reach `127.0.0.1`. It also stops a tab left open from an earlier run attaching to whatever document is served next. |
 | **`Origin` must be this server (or absent)** | Any site the user visits. WebSockets are **not** subject to the same-origin policy, so without this a visited page could open a socket to `localhost`. Absent means a non-browser client, which still has to know the room token. |
 | **`Host` must be `127.0.0.1`/`localhost` + port** | DNS rebinding, where a hostile name resolving to `127.0.0.1` would otherwise satisfy the origin check. |

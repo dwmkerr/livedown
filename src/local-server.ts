@@ -164,6 +164,26 @@ class Room {
   }
 }
 
+// Absolute paths of everything under public/, keyed by the URL that serves it,
+// resolved once at startup. Serving from this map means a request path is only
+// ever a lookup key: no part of it reaches the filesystem, so traversal and
+// symlink escape are impossible by construction rather than by validation.
+function buildServableFiles(dir: string, prefix = ""): Map<string, string> {
+  const files = new Map<string, string>();
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const abs = path.join(dir, entry.name);
+    const url = `${prefix}/${entry.name}`;
+    if (entry.isDirectory()) {
+      for (const [k, v] of buildServableFiles(abs, url)) files.set(k, v);
+    } else if (entry.isFile()) {
+      files.set(url, abs);
+    }
+  }
+  return files;
+}
+
+const SERVABLE = buildServableFiles(PUBLIC_DIR);
+
 function serveStatic(
   req: http.IncomingMessage,
   res: http.ServerResponse
@@ -171,17 +191,11 @@ function serveStatic(
   const urlPath = (req.url || "/").split("?")[0];
   // Any path without a file extension is the viewer itself: the single-page app
   // routes on the URL hash, not the path.
-  const rel = path.extname(urlPath) ? urlPath : "/index.html";
+  const key = path.extname(urlPath) ? urlPath : "/index.html";
 
-  // The leading slash is load-bearing: it makes path.normalize clamp ".." at
-  // the root before path.join, which is what contains traversal. The check
-  // below is the backstop if that invariant is ever broken.
-  const file = path.join(
-    PUBLIC_DIR,
-    path.normalize("/" + rel.replace(/^\/+/, ""))
-  );
-  if (!file.startsWith(PUBLIC_DIR + path.sep)) {
-    res.writeHead(403).end("Forbidden");
+  const file = SERVABLE.get(key);
+  if (!file) {
+    res.writeHead(404).end("Not found");
     return;
   }
 
