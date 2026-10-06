@@ -1,6 +1,6 @@
 {
   "name": "@dwmkerr/livedown",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "description": "View and edit a local markdown file in your browser, or share it for live collaboration.",
   "type": "commonjs",
   "main": "./dist/cli.js",
