@@ -74,7 +74,7 @@ Options:
 - `-P, --port <port>`: Local port (`0`, the default, picks a free one)
 - `--no-open`: Do not open the browser automatically
 
-The document is served only to `127.0.0.1`, under a URL carrying an unguessable token, and the page rejects WebSocket connections from any other origin. The page itself still fetches fonts from Google, and mermaid from a CDN for documents containing diagrams.
+The document is served only to `127.0.0.1`, under a URL carrying a single-use access token, and the page rejects WebSocket connections from any other origin. The page itself still fetches fonts from Google, and mermaid from a CDN for documents containing diagrams.
 
 ### `livedown share <file>`
 

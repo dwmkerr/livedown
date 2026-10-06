@@ -41,7 +41,7 @@ describe("public/index.html assets", () => {
   });
 
   it("shows the filename without the room id prefix", () => {
-    // `view` prefixes the room with an unguessable token, which would otherwise
+    // `view` prefixes the room with a capability token, which would otherwise
     // be rendered in the header and leak into screenshots.
     expect(INDEX_HTML).toMatch(
       /const fileName = docName\.split\('\/'\)\.pop\(\)/

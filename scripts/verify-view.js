@@ -48,7 +48,7 @@ const get = (p) =>
   cli.stderr.on("data", (d) => (out += d));
 
   await sleep(2500);
-  // The room name carries an unguessable token, so read it back from stdout.
+  // The room name carries a capability token, so read it back from stdout.
   // The CLI styles the URL, so strip ANSI escapes before matching.
 
   const plain = out.replace(
@@ -59,8 +59,8 @@ const get = (p) =>
   const DOC = urlMatch ? urlMatch[1] : "";
   const WS_URL = `ws://127.0.0.1:${PORT}/parties/main/${encodeURIComponent(DOC)}`;
   check(
-    "room name is token-prefixed and unguessable",
-    /^[0-9a-f]{16}\/view-test\.md$/.test(DOC),
+    "room name carries a 128-bit capability token",
+    /^[0-9a-f]{32}\/view-test\.md$/.test(DOC),
     DOC
   );
   check(

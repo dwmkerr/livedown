@@ -41,9 +41,9 @@ const MIME: Record<string, string> = {
 
 // Browsers connect WebSockets to localhost from ANY page the user has open:
 // WebSockets are not subject to the same-origin policy, and binding to loopback
-// does nothing to stop it. Loopback is also only a machine boundary, not a user
-// or process one - any local UID can reach 127.0.0.1. So three checks guard the
-// room, and the unguessable room name below is what covers the third case.
+// does nothing to stop it. Loopback is also only a machine boundary: any local
+// UID can reach 127.0.0.1. So three checks guard the room, and the room token
+// below is what covers the third case.
 function isLocalHostHeader(host: string | undefined, port: number): boolean {
   if (!host) return false;
   return host === `127.0.0.1:${port}` || host === `localhost:${port}`;
@@ -229,10 +229,12 @@ export function startLocalServer(
   basename: string,
   editKey: string
 ): Promise<LocalServer> {
-  // An unguessable room name. Loopback does not keep out other local processes,
-  // and a fixed name on a fixed port would also let a tab left open from an
-  // earlier run silently attach to whatever document is served next.
-  const doc = `${crypto.randomBytes(8).toString("hex")}/${basename}`;
+  // The room name carries a 128-bit capability token: possession of it is what
+  // authorizes a connection, exactly as possession of the edit key authorizes a
+  // push. Loopback does not keep out other local processes, and a predictable
+  // name would also let a tab left open from an earlier run attach to whatever
+  // document is served next.
+  const doc = `${crypto.randomBytes(16).toString("hex")}/${basename}`;
   const wsPath = `/parties/main/${encodeURIComponent(doc)}`;
 
   const room = new Room(editKey);

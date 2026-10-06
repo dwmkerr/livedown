@@ -67,8 +67,8 @@ run's edit key before relaying**, so the watcher verifies every update it writes
 to disk exactly as it does in share mode. The key is generated per run and never
 shown - there is nothing for the user to enter or manage.
 
-Access control is the room name: an unguessable 64-bit token, `<token>/<file>`.
-See [Local mode](#local-mode-livedown-view).
+Access control is a capability token carried in the room name,
+`<token>/<file>`. See [Local mode](#local-mode-livedown-view).
 
 ### Journey 1: Share (CLI to Web)
 
@@ -336,7 +336,7 @@ WebSocket upgrade or static response is served:
 |-------|-------|
 | **Bind `127.0.0.1` only** | Other machines on the network. |
 | **Static files read into memory at startup** | Path traversal and symlink escape. The request path is only a lookup key into a map built when the server starts, so no part of it reaches the filesystem. |
-| **Unguessable room name** (`<64-bit token>/<file>`, exact match on upgrade) | Other **processes** on the same machine. Loopback is only a machine boundary: any local UID, container on `--network host`, or WSL2 peer can reach `127.0.0.1`. It also stops a tab left open from an earlier run attaching to whatever document is served next. |
+| **Room capability token** (`<128-bit token>/<file>`, exact match on upgrade) | Other **processes** on the same machine. Loopback is only a machine boundary: any local UID, container on `--network host`, or WSL2 peer can reach `127.0.0.1`. It also stops a tab left open from an earlier run attaching to whatever document is served next. |
 | **`Origin` must be this server (or absent)** | Any site the user visits. WebSockets are **not** subject to the same-origin policy, so without this a visited page could open a socket to `localhost`. Absent means a non-browser client, which still has to know the room token. |
 | **`Host` must be `127.0.0.1`/`localhost` + port** | DNS rebinding, where a hostile name resolving to `127.0.0.1` would otherwise satisfy the origin check. |
 
@@ -347,9 +347,15 @@ Three properties are easy to get wrong and are worth stating outright:
 - **`Origin: undefined` is not authentication.** It is the absence of a header,
   which every non-browser client omits by default. The room token is what
   authenticates those connections.
-- **The room token is a credential.** It must not be rendered in the viewer
-  chrome, or it leaks into every screenshot - the header shows the filename
-  only.
+- **The room token is a credential, not obscurity.** Security through obscurity
+  means hiding the mechanism; everything here is documented and the source is
+  public. What is secret is a 128-bit value from `crypto.randomBytes`, and it
+  is a bearer credential of exactly the same kind as the edit key: possession
+  authorizes, and nothing else does. A guessing attacker has no oracle - every
+  attempt costs a WebSocket handshake against loopback and returns nothing on
+  failure, so there is no offline attack.
+- **The token must stay out of the viewer chrome**, or it leaks into every
+  screenshot. The header shows the filename only.
 
 Rendered markdown is sanitized with **DOMPurify** before it reaches
 `innerHTML`, and the page is served with a restrictive
