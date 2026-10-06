@@ -7,16 +7,12 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/tweetnacl@1.0.3/nacl-fast.min.js"></script>
-  <script type="module">
-    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
-    mermaid.initialize({ startOnLoad: false });
-    window.mermaid = mermaid;
-  </script>
-  <link  rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.17/codemirror.min.css">
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.17/codemirror.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.17/mode/markdown/markdown.min.js"></script>
+  <script src="/vendor/marked.min.js"></script>
+  <script src="/vendor/nacl-fast.min.js"></script>
+  <script src="/vendor/purify.min.js"></script>
+  <link  rel="stylesheet" href="/vendor/codemirror/codemirror.min.css">
+  <script src="/vendor/codemirror/codemirror.min.js"></script>
+  <script src="/vendor/codemirror/markdown.min.js"></script>
 
   <style>
     :root {
@@ -1170,8 +1166,12 @@
   }
 
   const docName = location.hash.replace(/^#/, '');
-  document.getElementById('hdr-file').textContent = docName;
-  document.title = docName + ' · livedown';
+  // The room name is prefixed with an id (`view` uses an unguessable token, so
+  // showing it would leak a credential into screenshots). The header is
+  // specified as the filename - see docs/design.md "Viewer header".
+  const fileName = docName.split('/').pop() || docName;
+  document.getElementById('hdr-file').textContent = fileName;
+  document.title = fileName + ' · livedown';
 
   // ── Copy share link (click filename) ───────────────────────
   const joinUrl = location.origin + '/#' + docName;
@@ -1303,8 +1303,11 @@
 
   function setMeta(meta) {
     if (!meta) return;
-    const title = meta.title || docName;
-    document.getElementById('hdr-file').textContent = meta.file || docName;
+    const title = meta.title || fileName;
+    // Strip the room's id prefix here too - setMeta runs on every update and
+    // would otherwise undo the filename set at startup.
+    const shown = (meta.file || docName).split('/').pop();
+    document.getElementById('hdr-file').textContent = shown;
     document.title = title + ' · livedown';
   }
 
@@ -1546,9 +1549,34 @@
   });
 
   // ── Render preview ───────────────────────────────────────────
+  // Mermaid costs ~20 CDN requests and is only needed by documents that
+  // actually contain diagrams, so it loads on first use rather than on every
+  // page load. A failed load (offline) falls through to the error box below,
+  // which shows the diagram source as text.
+  var mermaidPromise = null;
+  function loadMermaid() {
+    if (!mermaidPromise) {
+      mermaidPromise = import('https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs')
+        .then(function (mod) {
+          var mermaid = mod.default;
+          mermaid.initialize({ startOnLoad: false });
+          window.mermaid = mermaid;
+          return mermaid;
+        });
+    }
+    return mermaidPromise;
+  }
+
   function renderPreview(content) {
     var inner = document.getElementById('preview-inner');
-    inner.innerHTML = marked.parse(content || '');
+    // marked does not sanitize, and the document may be one the user did not
+    // write - `livedown view ./README.md` on a freshly cloned repo is the
+    // normal case. Without this an <img onerror> runs in the page's own origin.
+    inner.innerHTML = DOMPurify.sanitize(marked.parse(content || ''), {
+      // mermaid fences arrive as <pre><code class="language-mermaid">, and the
+      // block below reads that class to find them.
+      ADD_ATTR: ['class'],
+    });
 
     var codeBlocks = inner.querySelectorAll('pre > code.language-mermaid');
     codeBlocks.forEach(function (code) {
@@ -1559,8 +1587,10 @@
       pre.parentNode.replaceChild(div, pre);
     });
 
-    if (codeBlocks.length > 0 && window.mermaid) {
-      window.mermaid.run({ querySelector: '.mermaid' }).catch(function () {
+    if (codeBlocks.length > 0) {
+      loadMermaid().then(function (mermaid) {
+        return mermaid.run({ querySelector: '.mermaid' });
+      }).catch(function () {
         inner.querySelectorAll('.mermaid').forEach(function (el) {
           if (!el.querySelector('svg')) {
             var src = el.textContent;

@@ -4,6 +4,7 @@ Livedown lets you share a local file and collaborate on it live - across browser
 
 This page covers the essentials of how livedown works, and then some specific journeys:
 
+- [Viewing a local file, with no relay](#journey-0-view-local-only)
 - [Sharing a local file to web](#journey-1-share-cli-to-web)
 - [Edit live, from local file to browser](#journey-2-edit-live-cli-to-web-edit-online)
 - [Sharing to a remote machine](#journey-3-share-to-remote-machine-future) - one file synchronised across machines with live collab
@@ -35,10 +36,39 @@ The relay does not persist data. Rooms exist only while connections are active. 
 |-----------|------|---------|--------|
 | **CLI + Watcher** | `src/cli.ts`, `src/watcher.ts` | Node.js | tweetnacl |
 | **Relay** | `src/party/livedown.ts` | Cloudflare Workers (PartyKit) | @noble/curves |
-| **Browser Viewer** | `public/index.html` | Browser | tweetnacl (CDN) |
+| **Local Server** | `src/local-server.ts` | Node.js | none (see below) |
+| **Browser Viewer** | `public/index.html` | Browser | tweetnacl + DOMPurify (vendored) |
 
 
 ## Journeys
+
+### Journey 0: View (local only)
+
+`livedown view ./file.md` replaces the relay with a server on `127.0.0.1`. The
+browser viewer is the same `public/index.html` the relay serves, so there is one
+viewer implementation for both modes - it resolves its WebSocket from
+`location.host` and needs no knowledge of which server it is talking to.
+
+```
+  ┌──────────────┐          ┌───────────────────┐          ┌──────────────┐
+  │  CLI - View  │ unsigned │   Local Server    │          │   Browser    │
+  │              │──pushes─▶│   127.0.0.1 only  │──update─▶│  (same HTML  │
+  │ (Local File) │◀─writes──│  src/local-server │◀─pushes──│  as relay)   │
+  └──────────────┘          └───────────────────┘          └──────────────┘
+```
+
+The local server implements only the subset of the room protocol a single local
+client needs: hold the latest content, send `init` on connect, broadcast
+`update` on push. It omits edit-key registration and private-mode gating, and
+reports `protected: false` so the browser allows editing with no key.
+
+Browser pushes therefore arrive unsigned. The local server **signs them with the
+run's edit key before relaying**, so the watcher verifies every update it writes
+to disk exactly as it does in share mode. The key is generated per run and never
+shown - there is nothing for the user to enter or manage.
+
+Access control is a capability token carried in the room name,
+`<token>/<file>`. See [Local mode](#local-mode-livedown-view).
 
 ### Journey 1: Share (CLI to Web)
 
@@ -286,10 +316,53 @@ Every push message is signed with the private key. Three independent verificatio
 | Layer | Has | Verifies | Rejects |
 |-------|-----|----------|---------|
 | **Relay** | Public key | Signature on every push | Unsigned or invalid pushes are never broadcast |
-| **Watcher** | Private key (derives public key) | Signature on incoming updates | Forged updates are never written to disk |
+| **Watcher** | Private key (derives public key) | Signature on **every** incoming update | Forged *and unsigned* updates are never written to disk |
 | **Browser** | Public key (from relay) | Edit key matches public key on entry | Wrong key is rejected before any push |
 
-A compromised relay still cannot forge updates that the local watcher would accept — the watcher re-verifies every signature before writing to disk.
+Frontmatter values arrive over the wire, so the watcher serializes them with
+gray-matter rather than building YAML by hand. Hand-built YAML let a value
+containing a quote and a newline close its own field and append further
+top-level keys to the user's file.
+
+A compromised relay still cannot forge updates that the local watcher would accept - the watcher re-verifies every signature before writing to disk. The check is unconditional: an update carrying no signature at all is rejected, so the relay cannot bypass verification by simply omitting the field.
+
+### Local mode (`livedown view`)
+
+Local mode keeps signing - the server signs browser pushes so the watcher's
+check stays unconditional - and adds four access controls, all enforced before a
+WebSocket upgrade or static response is served:
+
+| Check | Stops |
+|-------|-------|
+| **Bind `127.0.0.1` only** | Other machines on the network. |
+| **Static files read into memory at startup** | Path traversal and symlink escape. The request path is only a lookup key into a map built when the server starts, so no part of it reaches the filesystem. |
+| **Room capability token** (`<128-bit token>/<file>`, exact match on upgrade) | Other **processes** on the same machine. Loopback is only a machine boundary: any local UID, container on `--network host`, or WSL2 peer can reach `127.0.0.1`. It also stops a tab left open from an earlier run attaching to whatever document is served next. |
+| **`Origin` must be this server (or absent)** | Any site the user visits. WebSockets are **not** subject to the same-origin policy, so without this a visited page could open a socket to `localhost`. Absent means a non-browser client, which still has to know the room token. |
+| **`Host` must be `127.0.0.1`/`localhost` + port** | DNS rebinding, where a hostile name resolving to `127.0.0.1` would otherwise satisfy the origin check. |
+
+Three properties are easy to get wrong and are worth stating outright:
+
+- **Loopback binding is not an access control.** It stops other machines and
+  nothing else.
+- **`Origin: undefined` is not authentication.** It is the absence of a header,
+  which every non-browser client omits by default. The room token is what
+  authenticates those connections.
+- **The room token is a credential, not obscurity.** Security through obscurity
+  means hiding the mechanism; everything here is documented and the source is
+  public. What is secret is a 128-bit value from `crypto.randomBytes`, and it
+  is a bearer credential of exactly the same kind as the edit key: possession
+  authorizes, and nothing else does. A guessing attacker has no oracle - every
+  attempt costs a WebSocket handshake against loopback and returns nothing on
+  failure, so there is no offline attack.
+- **The token must stay out of the viewer chrome**, or it leaks into every
+  screenshot. The header shows the filename only.
+
+Rendered markdown is sanitized with **DOMPurify** before it reaches
+`innerHTML`, and the page is served with a restrictive
+`Content-Security-Policy`. `marked` does not sanitize, and `livedown view` is
+normally pointed at a file the user did not write.
+
+`scripts/verify-view.js` covers all of the above as regression tests.
 
 ### Private mode (view key)
 
@@ -324,3 +397,7 @@ Any PR that changes the protocol, message types, or state transitions must updat
 - This document (`docs/architecture.md`)
 - `README.md` "How It Works" section
 - `CLAUDE.md` architecture references
+
+Changes to `livedown view` must additionally keep the access-control table in
+[Local mode](#local-mode-livedown-view) and the checks in
+`scripts/verify-view.js` in step.

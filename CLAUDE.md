@@ -136,4 +136,5 @@ All set under repo Settings → Secrets and variables → Actions:
 - `src/party/livedown.ts` — relay server, signature verification (@noble/curves)
 - `src/watcher.ts` — file watcher, signs pushes, verifies incoming updates
 - `src/cli.ts` — CLI entry point, generates edit key
-- `public/index.html` — browser viewer (tweetnacl via CDN)
+- `src/local-server.ts` — local-only server for `livedown view` (no signing; see the Local mode section in `docs/architecture.md` for the access controls that replace it)
+- `public/index.html` — browser viewer (assets vendored in `public/vendor/`, refreshed with `npm run vendor`)

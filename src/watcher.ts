@@ -136,26 +136,32 @@ export function startWatcher(
         }
         if (msg.type !== "update") return;
 
-        // Verify signature before writing to disk
-        if (msg.signature && publicKey) {
-          if (!verifySignature(msg.content || "", msg.signature, publicKey)) {
+        // Verify before writing to disk. Unconditional on purpose: gating this
+        // on a signature being present would let anyone who can reach the room
+        // skip it simply by omitting the field.
+        if (publicKey) {
+          if (
+            !msg.signature ||
+            !verifySignature(msg.content || "", msg.signature, publicKey)
+          ) {
             log(`  ${red("✗ Rejected update — invalid signature")}`);
             return;
           }
         }
 
         const meta = msg.meta || {};
-        let frontmatter = "";
-        if (meta.owner || meta.github_repo || meta.title) {
-          const lines = ["---"];
-          if (meta.owner) lines.push(`owner: "${meta.owner}"`);
-          if (meta.github_repo)
-            lines.push(`github_repo: "${meta.github_repo}"`);
-          if (meta.title) lines.push(`title: "${meta.title}"`);
-          lines.push("---\n");
-          frontmatter = lines.join("\n");
+        // These values arrive over the wire. Building YAML by hand let a value
+        // containing a quote and a newline close its own field and add further
+        // top-level keys, so serialize through gray-matter, which escapes.
+        const frontmatter: Record<string, string> = {};
+        for (const key of ["owner", "github_repo", "title"] as const) {
+          if (typeof meta[key] === "string" && meta[key]) {
+            frontmatter[key] = meta[key];
+          }
         }
-        const newRaw = frontmatter + msg.content;
+        const newRaw = Object.keys(frontmatter).length
+          ? matter.stringify(msg.content || "", frontmatter)
+          : msg.content;
         const currentRaw = fs.existsSync(filePath)
           ? fs.readFileSync(filePath, "utf8")
           : "";

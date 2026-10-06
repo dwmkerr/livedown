@@ -18,4 +18,11 @@ export default [
       "prettier/prettier": "error",
     },
   },
+  {
+    // Plain CommonJS Node scripts, not part of the TypeScript build.
+    files: ["scripts/**/*.js"],
+    rules: {
+      "@typescript-eslint/no-require-imports": "off",
+    },
+  },
 ];

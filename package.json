@@ -1,7 +1,7 @@
 {
   "name": "@dwmkerr/livedown",
   "version": "0.1.7",
-  "description": "Share a local markdown file and collaborate live in a browser and across machines.",
+  "description": "View and edit a local markdown file in your browser, or share it for live collaboration.",
   "type": "commonjs",
   "main": "./dist/cli.js",
   "bin": {
@@ -10,6 +10,8 @@
   "scripts": {
     "build": "tsc && chmod +x dist/cli.js",
     "build:watch": "tsc -w",
+    "vendor": "./scripts/vendor-assets.sh",
+    "verify:view": "npm run build && node scripts/verify-view.js",
     "dev": "tsx watch src/cli.ts",
     "relay:dev": "partykit dev --port 1999",
     "start": "ts-node ./src/cli.ts",
@@ -36,8 +38,10 @@
   "homepage": "https://github.com/dwmkerr/livedown#readme",
   "keywords": [
     "markdown",
-    "live",
+    "viewer",
     "preview",
+    "live",
+    "cli",
     "collaborative",
     "partykit",
     "websocket"

@@ -7,6 +7,7 @@ import path from "path";
 import readline from "readline";
 import { Command } from "commander";
 import { startWatcher } from "./watcher";
+import { startLocalServer } from "./local-server";
 import {
   generateEditKeyPair,
   generateViewKey,
@@ -28,6 +29,7 @@ const pkg = JSON.parse(
 );
 const DEFAULT_RELAY = "livedown.dwmkerr.partykit.dev";
 const DEV_RELAY = "localhost:1999";
+const DEFAULT_VIEW_PORT = 0;
 
 function shortId(): string {
   return crypto.randomBytes(3).toString("hex");
@@ -190,6 +192,105 @@ async function startSharing(
   }
 }
 
+// Keyboard hints for a long-running session. Kept here rather than in the
+// watcher so view mode can offer a different set to share mode.
+function attachViewKeys(url: string, hints: string): void {
+  if (!process.stdin.isTTY) return;
+  process.stdout.write(hints);
+  process.stdin.setRawMode(true);
+  process.stdin.resume();
+  process.stdin.on("data", async (key: Buffer) => {
+    const ch = key.toString();
+    if (ch === "q" || ch === "\u0003") {
+      process.exit(0);
+    }
+    if (ch === "o") {
+      try {
+        const open = (await import("open")).default;
+        await open(url);
+        process.stdout.write(
+          `${clearLine()}  ${green("\u2713 Opened in browser")}\n`
+        );
+      } catch {
+        process.stdout.write(
+          `${clearLine()}  ${red("\u2717 Could not open browser")}\n`
+        );
+      }
+      process.stdout.write(hints);
+    }
+  });
+}
+
+async function startViewing(
+  file: string,
+  opts: { editor: string; port: string; open?: boolean }
+): Promise<void> {
+  const filePath = path.resolve(file);
+  if (!fs.existsSync(filePath)) {
+    console.error(`Error: file not found: ${filePath}`);
+    process.exit(1);
+  }
+
+  // An edit key is generated but never shown: the local server signs the
+  // browser's pushes with it so the watcher can verify them like any other.
+  const { editKey, publicKey } = generateEditKeyPair();
+
+  const port = Number(opts.port);
+  if (!Number.isInteger(port) || port < 0 || port > 65535) {
+    console.error(`  ${red(`\u2717 Invalid port: ${opts.port}`)}`);
+    process.exit(1);
+  }
+
+  let server;
+  try {
+    server = await startLocalServer(port, path.basename(filePath), editKey);
+  } catch (err) {
+    const e = err as NodeJS.ErrnoException;
+    const msg =
+      e.code === "EADDRINUSE"
+        ? `Port ${opts.port} is already in use. Pass --port to choose another.`
+        : e.message;
+    console.error(`  ${red(`\u2717 ${msg}`)}`);
+    process.exit(1);
+  }
+
+  const doc = server.doc;
+  const viewerUrl = `http://127.0.0.1:${server.port}/#${doc}`;
+  const roomUrl = `ws://127.0.0.1:${server.port}/parties/main/${encodeURIComponent(doc)}`;
+
+  console.log(`\n  Viewing   ${filePath}`);
+  try {
+    await startWatcher(
+      filePath,
+      doc,
+      roomUrl,
+      opts.editor,
+      editKey,
+      publicKey,
+      undefined
+    );
+  } catch (err) {
+    console.error(`  ${red(`\u2717 ${(err as Error).message}`)}`);
+    await server.close();
+    process.exit(1);
+  }
+
+  console.log(
+    `  Open      ${underline(link(viewerUrl))} ${dim("(local only, press o to open)")}\n`
+  );
+
+  if (opts.open !== false) {
+    try {
+      const open = (await import("open")).default;
+      await open(viewerUrl);
+    } catch {
+      /* the URL is printed above; opening is a convenience */
+    }
+  }
+
+  attachViewKeys(viewerUrl, dim("  o open  q quit"));
+}
+
 const defaultRelay = process.env.PARTYKIT_HOST || DEFAULT_RELAY;
 const defaultEditor =
   process.env.LIVEDOWN_EDITOR || os.hostname().split(".")[0];
@@ -199,7 +300,7 @@ const program = new Command();
 program
   .name("livedown")
   .description(
-    "Share a local markdown file and collaborate live in a browser and across machines."
+    "View and edit a local markdown file in your browser, or share it for live collaboration."
   )
   .version(pkg.version)
   // Accept --dev at the root so either argument order works:
@@ -225,6 +326,21 @@ program
     // Merge root-level --dev so either order works.
     startSharing(file, { ...opts, dev: opts.dev || !!program.opts().dev })
   );
+
+program
+  .command("view")
+  .description(
+    "Preview a local file in the browser (no relay, document stays local)"
+  )
+  .argument("<file>", "Path to the markdown file")
+  .option("-e, --editor <name>", "Your name shown in the editor", defaultEditor)
+  .option(
+    "-P, --port <port>",
+    "Local port (0 picks a free one)",
+    String(DEFAULT_VIEW_PORT)
+  )
+  .option("--no-open", "Do not open the browser automatically")
+  .action((file, opts) => startViewing(file, opts));
 
 function fileCompleter(line: string): [string[], string] {
   // Determine the directory to list and the prefix to filter by.
@@ -302,7 +418,7 @@ function promptForFile(): Promise<string> {
 // subcommand still drop into the prompt, but `--help` / `--version` must
 // reach commander so users (and the CLI tests) get usage and version output.
 const argv = process.argv.slice(2);
-const knownSubcommands = new Set(["share", "help"]);
+const knownSubcommands = new Set(["share", "view", "help"]);
 const hasSubcommand = argv.some((a) => knownSubcommands.has(a));
 const isHelpOrVersion = argv.some((a) =>
   ["-h", "--help", "-V", "--version"].includes(a)
