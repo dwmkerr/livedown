@@ -1,7 +1,3 @@
-<!-- openspec-flow badge-start -->
-[![openspec-flow](https://github.com/dwmkerr/livedown/actions/workflows/openspec-flow.yml/badge.svg)](https://github.com/dwmkerr/livedown/actions/workflows/openspec-flow.yml)
-<!-- openspec-flow badge-end -->
-
 <p align="center">
   <h2 align="center"><code>📝 livedown</code></h2>
   <h3 align="center">View and edit a local Markdown file in your browser, or share it for live collaboration</h3>
@@ -31,13 +27,13 @@
 
 ## Quickstart
 
-Preview and edit a file locally:
+View and edit a file locally:
 
 ```bash
 npx @dwmkerr/livedown view ./docs/architecture.md
 ```
 
-Browser edits update the file, and file edits update the browser. Your document never leaves your machine.
+Changes are saved to the filesystem, this makes it ideal for co-editing with agents, editing with `vi` in a terminal while seeing a live preview and so on.
 
 To share the file:
 
@@ -45,13 +41,13 @@ To share the file:
 npx @dwmkerr/livedown share ./docs/architecture.md
 ```
 
-The CLI syncs the file to an ephemeral relay and prints a URL. Share the edit key to let others edit; the CLI writes their changes to the local file.
+An url is shown that you can share with other users, along with either a View Key (so that they can open the file) or an Edit Key (so that they can edit).
 
 <p align="center">
   <img src="docs/terminal-share.svg" alt="livedown share terminal output" width="720">
 </p>
 
-The relay is ephemeral - it disappears when the CLI is terminated:
+The relay used to share is entirely ephemeral, as soon as you close the `livedown` CLI it is gone.
 
 <p align="center">
   <img src="docs/livedown-share-architecture-doc-browser-screenshot.png" alt="livedown browser viewer showing the architecture doc" width="900">
@@ -61,13 +57,13 @@ The relay is ephemeral - it disappears when the CLI is terminated:
 
 ### `livedown view <file>`
 
-Preview and edit a local file in the browser. Your document never leaves your machine.
+Preview and edit a local file in the browser served from `127.0.0.1`:
 
 ```bash
 livedown view ./notes.md
 ```
 
-The CLI serves the viewer on `127.0.0.1` and opens it. Browser edits update the file, and file edits update the browser.
+Browser edits update the file, and file edits update the browser.
 
 Options:
 
@@ -155,6 +151,18 @@ docker run --rm -v "$(pwd):/data" ghcr.io/dwmkerr/livedown share /data/notes.md 
 
 ## How it works
 
+`livedown view` keeps everything on your machine:
+
+```
+ Your Machine
+ ┌──────────┐            ┌──────────────┐          ┌──────────┐
+ │ notes.md │───watch───▶│ Local server │──update─▶│ Browser  │
+ │          │◀──write────│  127.0.0.1   │◀──edit───│          │
+ └──────────┘            └──────────────┘          └──────────┘
+```
+
+`livedown share` swaps the local server for a relay, so other people can reach it:
+
 ```
  Your Machine             Relay                    Collaborator
  ┌──────────┐            ┌──────────────┐          ┌──────────┐
@@ -163,13 +171,11 @@ docker run --rm -v "$(pwd):/data" ghcr.io/dwmkerr/livedown share /data/notes.md 
  └──────────┘            └──────────────┘          └──────────┘
 ```
 
-`livedown view` replaces the relay with a local server on `127.0.0.1`. Both commands use the same browser viewer.
-
 Livedown has these components:
 
-- A **CLI** on your machine watches your markdown file and pushes signed updates when it changes.
-- A **relay** in the cloud forwards those updates to everyone connected to the same document.
-- A **browser viewer** renders the document live and lets collaborators with the edit key edit it back.
+- A **CLI** on your machine watches your markdown file and pushes updates when it changes.
+- A **local server** or a **relay** in the cloud forwards those updates to everyone connected to the same document.
+- A **browser viewer** renders the document live and lets collaborators with the edit key edit it back. It is the same viewer in both modes.
 
 Details on the state machine, message protocol, security model, and the PartyKit / Cloudflare Workers relay setup live in [docs/architecture.md](docs/architecture.md).
 
