@@ -151,6 +151,18 @@ docker run --rm -v "$(pwd):/data" ghcr.io/dwmkerr/livedown share /data/notes.md 
 
 ## How it works
 
+`livedown view` keeps everything on your machine:
+
+```
+ Your Machine
+ ┌──────────┐            ┌──────────────┐          ┌──────────┐
+ │ notes.md │───watch───▶│ Local server │──update─▶│ Browser  │
+ │          │◀──write────│  127.0.0.1   │◀──edit───│          │
+ └──────────┘            └──────────────┘          └──────────┘
+```
+
+`livedown share` swaps the local server for a relay, so other people can reach it:
+
 ```
  Your Machine             Relay                    Collaborator
  ┌──────────┐            ┌──────────────┐          ┌──────────┐
@@ -159,13 +171,11 @@ docker run --rm -v "$(pwd):/data" ghcr.io/dwmkerr/livedown share /data/notes.md 
  └──────────┘            └──────────────┘          └──────────┘
 ```
 
-`livedown view` replaces the relay with a local server on `127.0.0.1`. Both commands use the same browser viewer.
-
 Livedown has these components:
 
-- A **CLI** on your machine watches your markdown file and pushes signed updates when it changes.
-- A **relay** in the cloud forwards those updates to everyone connected to the same document.
-- A **browser viewer** renders the document live and lets collaborators with the edit key edit it back.
+- A **CLI** on your machine watches your markdown file and pushes updates when it changes.
+- A **local server** or a **relay** in the cloud forwards those updates to everyone connected to the same document.
+- A **browser viewer** renders the document live and lets collaborators with the edit key edit it back. It is the same viewer in both modes.
 
 Details on the state machine, message protocol, security model, and the PartyKit / Cloudflare Workers relay setup live in [docs/architecture.md](docs/architecture.md).
 
